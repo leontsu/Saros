@@ -1486,6 +1486,45 @@ TEST_F(HistoryTest, AbortedUpdateVersionEntersRetirementQueueExactlyOnce) {
     VersionRetirementRegistry::instance().drain_all();
 }
 
+// The follower-epoch guard: a read may skip a pending version whose writer is
+// one epoch older (a writer that began while a slot lagged), not two.
+TEST_F(HistoryTest, FollowerEpochGuardAllowsOneEpochOldPendingWriter) {
+    for (const bool incremental : {false, true}) {
+        for (const uint64_t gap : {1u, 2u}) {
+            reinitialize(incremental);
+            VersionRetirementRegistry::instance().drain_all();
+            const uint64_t now = 5 + gap;
+            GlobalEpoch.obj_ = now;
+            for (int i = 0; i < NumVirtualThreads; ++i)
+                ThManagementTable[i]->atomicStoreEpoch(now);
+            ThManagementTable[9]->atomicStoreEpoch(5);
+            begin("2");  // W registers at `now` but takes epoch 5 from slot 9
+            ASSERT_EQ(txmap[2]->txid_.epoch, 5u);
+            ASSERT_TRUE(write("a", "2"));
+            ASSERT_TRUE(txmap[2]->validation());  // W's version is now pending
+            ThManagementTable[9]->atomicStoreEpoch(now);
+            begin("1");  // R
+            ASSERT_EQ(txmap[1]->txid_.epoch, now);
+            const bool read_ok = read("a", "1");
+            EXPECT_EQ(read_ok, gap == 1)
+                << "incremental=" << incremental << " gap=" << gap;
+            if (read_ok) {
+                auto it = txmap[1]->readSet_.find(row_key(table["a"]));
+                ASSERT_NE(it, txmap[1]->readSet_.end());
+                EXPECT_EQ(it->second, TxID())
+                    << "R reads the committed version below W's pending one";
+                const Graph& g = table["a"]->graph_;
+                ASSERT_NE(g.find(txmap[1]->txid_), g.end());
+                EXPECT_EQ(g.at(txmap[1]->txid_).writtenBy_.count(txmap[2]->txid_), 1u)
+                    << "R -> W, the anti-dependency of the skipped version";
+            }
+            txmap[1]->abort();
+            txmap[2]->abort();
+            VersionRetirementRegistry::instance().drain_all();
+        }
+    }
+}
+
 // An update whose version was never installed is freed at once.
 TEST_F(HistoryTest, NeverSplicedAbortedUpdateIsFreedImmediatelyNotQueued) {
     reinitialize(false);

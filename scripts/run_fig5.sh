@@ -1,17 +1,14 @@
 #!/bin/bash
-# Fig. 5 and 1a: memory over 600 s at 0.25, 64 and 1,024 short requests per second (3 runs each).
-# "run_fig5.sh ab": the freeing comparison of Sec. V-B (off, and on with the budget 4096) instead.
+# Fig. 5, Fig. 1a and Sec. V-B: memory over 600 s at 0.25, 64 and 1,024 short requests per
+# second, freeing off and on, 3 repetitions (the second in the order on, off).
 source "$(dirname "$0")/common.sh"
 CPUS=${CPUS:-$(seq -s, 0 2 30)}
 D=$OUT/fig5
-declare -A ARM=([saros]="$CF")
-if [ "${1:-}" = ab ]; then
-  D=$OUT/fig5_ab
-  ARM=([off]="$NOCF" [on]="--free_retired_history_chunks=true --free_retired_history_chunks_budget=4096")
-fi
+declare -A ARM=([off]="$NOCF" [on]="$CF")
 for rep in 1 2 3; do
-  for point in p15 64 1024; do
-    for arm in "${!ARM[@]}"; do
+  [ $rep = 2 ] && order="on off" || order="off on"
+  for point in 1024 p15 64; do
+    for arm in $order; do
       l=r${point}_${arm}_$rep
       [ -s $D/$l.time ] && continue
       mkdir -p $D

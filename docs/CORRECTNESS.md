@@ -19,6 +19,25 @@ Environment variables (the tests do not parse flags):
 `OZE_TEST_IMPORT_SKIP_RETIRABLE` and `OZE_TEST_HISTORY_DUMP_PATH` (a history
 dump of the test process); the variables of `schedule_test` are listed below.
 
+## Epoch rules
+
+A transaction's epoch is the minimum epoch over the active workers when it
+begins, while its thread registers at the global epoch; the two can differ by
+one, and the epoch rules allow for that difference:
+
+- Write validation aborts a writer that is more than one epoch older than a
+  reader of the record it writes.
+- Order forwarding aborts instead of placing a version below the version of a
+  writer more than one epoch older.
+- The follower-epoch guard of the read (`get_visible_version()`): a read may
+  skip a pending version whose writer is at most one epoch older than the
+  reader; skipping an older writer's pending version aborts the read. Without
+  the slack, a writer that began while one worker lagged would make every later
+  reader of its pending versions abort, for as long as it runs.
+
+`HistoryTest.FollowerEpochGuardAllowsOneEpochOldPendingWriter` checks the
+guard with writers one and two epochs older, on both representations.
+
 ## Designated schedules (Sec. V-D)
 
 `ScheduleTest.DesignatedSchedules` runs five schedules (a blind-write

@@ -1326,8 +1326,10 @@ public:
     // Oze's read-time version choice (caller holds the record latch): take the
     // newest committed version whose read keeps the record graph acyclic,
     // adding anti-dependency edges to every version skipped. Skipping a
-    // pending version of an earlier-epoch writer is refused (epoch guard).
-    // Saros also publishes those edges to the record's history.
+    // pending version whose writer is more than one epoch older than this
+    // transaction is refused (the follower-epoch guard; a writer's epoch can be
+    // one below the epoch its thread registered, see begin()). Saros also
+    // publishes the edges to the record's history.
     Status get_visible_version(Tuple *tuple, Version **return_ver) {
         Status stat = Status::OK;
         Version* ver = nullptr;
@@ -1354,7 +1356,7 @@ RETRY:
 
         // add anti-dependency edges found when skipping versions
         for (auto& follower : followers) {
-            if (follower->txid_.epoch < this->txid_.epoch) {
+            if (static_cast<uint64_t>(follower->txid_.epoch) + 1 < this->txid_.epoch) {
                 stat = Status::ERROR_NO_VISIBLE_VERSION;
                 goto OUT;
             }

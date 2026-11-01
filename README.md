@@ -30,7 +30,7 @@ Oze's merge-based record graphs with `--saros=false`.
 
 | Paper | Script | Notes |
 |---|---|---|
-| Fig. 1a, Fig. 5, Sec. V-B (memory over 600 s) | `scripts/run_fig5.sh` | `run_fig5.sh ab`: freeing off vs. on |
+| Fig. 1a, Fig. 5, Sec. V-B (memory over 600 s) | `scripts/run_fig5.sh` | freeing off and on |
 | Fig. 1b, Sec. V-C (L1 validation cost) | `scripts/run_fig1b.sh` | `#l1cost` lines on stderr |
 | Fig. 6 (static and dynamic BoM) | `scripts/run_fig6.sh static`, `dynamic` | |
 | Fig. 7 (interactive transactions) | `scripts/run_fig7.sh` | |

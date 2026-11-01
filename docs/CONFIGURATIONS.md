@@ -9,8 +9,11 @@ command lines; `scripts/common.sh` defines the flag groups below.
 
 | Archived binary | Here | Used for |
 |---|---|---|
-| `bomb_oze.exe` (chunk-free build) | `build/saros/bomb_saros` | every BoMB number with Saros |
-| `ldbc_oze.exe` (chunk-free build) | `build/saros/ldbc_saros` | LDBC Q2, Saros and Oze arms |
+| `bomb_oze_GS.exe` | `build/saros/bomb_saros` | every BoMB number with Saros |
+| `ldbc_oze_GS.exe` | `build/saros/ldbc_saros` | LDBC Q2, Saros and Oze arms |
+
+The archived binaries take `--epoch_guard_slack=true` in every evaluated
+configuration; here that rule is fixed (see below).
 
 Both binaries run Saros by default; `--saros=false` selects Oze's merge-based
 record graphs in the same binary (the LDBC Oze arm and the designated
@@ -92,23 +95,21 @@ numactl --membind=0 taskset -c <CPUs> /usr/bin/time -v <binary> <flags>`.
 | Paper item | Script | Command line | CPUs |
 |---|---|---|---|
 | Fig. 1b, Sec. V-C | `run_fig1b.sh` | `bomb_saros SAROS SAROS_OPT CF STATIC --bomb_base_product_size_per_factory=p RATE(64) --thread_num=9 --extime=90 --l1_cost_diag=true --eval_sample_path=...`, p = 50, 100, 150, 200 | 0, 2, ..., 94 |
-| Fig. 1a, Fig. 5 | `run_fig5.sh` | `bomb_saros SAROS SAROS_OPT CF STATIC RATE(x) --thread_num=8 --extime=600 --retention_sample_path=... --retention_sample_interval_s=10 --eval_sample_path=...`, x = p15, 64, 1024, 3 repetitions; RSS once per second (`scripts/rss_sampler.py`) | 0, 2, ..., 30 |
-| Sec. V-B, freeing off vs. on | `run_fig5.sh ab` | as Fig. 5 with `NOCF` (off) or `--free_retired_history_chunks=true --free_retired_history_chunks_budget=4096` (on) | 0, 2, ..., 30 |
+| Fig. 1a, Fig. 5, Sec. V-B | `run_fig5.sh` | `bomb_saros SAROS SAROS_OPT CF STATIC RATE(x) --thread_num=8 --extime=600 --retention_sample_path=... --retention_sample_interval_s=10 --eval_sample_path=...` (freeing on) and the same with `NOCF` (off), x = 1024, p15, 64, 3 repetitions; RSS once per second (`scripts/rss_sampler.py`) | 0, 2, ..., 30 |
 | Fig. 6a/b | `run_fig6.sh static` | `bomb_saros SAROS SAROS_OPT CF STATIC RATE(r) --thread_num=N+1 --extime=60 --eval_sample_path=...`, N = 1, 2, 4, 8, 16, 24, 32, r on the ladder | 0, 2, ..., 78 |
 | Fig. 6c/d | `run_fig6.sh dynamic` | as Fig. 6a/b with `DYNAMIC` | 0, 2, ..., 78 |
 | Fig. 7 | `run_fig7.sh` | `bomb_saros SAROS SAROS_OPT CF STATIC RATE(r) --thread_num=33 --extime=60 --bomb_interactive_us=d --eval_sample_path=...`, d = 0, 100, 200, 300, 500 | 0, 2, ..., 78 |
 | Fig. 9 | `run_fig9.sh` | `bomb_saros SAROS <stage> STATIC RATE(r) --thread_num=ns+1 --extime=60 --eval_sample_path=...`, r = 1024, 8192, ns = 8, 32, 3 repetitions; S1: index, skip and reuse false, `NOCF`; S2: + index; S3: + skip; S4: + reuse; S5: + `CF` | 0, 2, ..., 78 |
 | Sec. V-G, many Q2 | `run_ldbc.sh many` | `ldbc_saros SAROS SAROS_OPT CF` (or `OZE`) `--short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | 0, 2, ..., 94 |
 | Sec. V-G, single Q2 | `run_ldbc.sh single` | as above with `--q2_clients=1 --q2_stmt_delay_us=0 --tf_rate=10000 --extime=130 --tf_lr_delay_s=60 --q2_single --q2_all_countries --q2_hub=h`, h = 0, 1, 2 | 0, 2, ..., 94 |
-| Sec. V-D, history check | `run_history_check.sh` | `bomb_saros SAROS SAROS_OPT --free_retired_history_chunks=true --free_retired_history_chunks_budget=4096 STATIC RATE(r) --thread_num=8 --extime=60 --history_dump_path=<dir>` (plus both samplers), r = 64, 1024; then `tools/check_history.py <dir>` | 0, 2, ..., 30 |
+| Sec. V-D, history check | `run_history_check.sh` | `bomb_saros SAROS SAROS_OPT CF STATIC RATE(r) --thread_num=8 --extime=60 --history_dump_path=<dir>` (plus both samplers), r = 64, 1024; then `tools/check_history.py <dir>` | 0, 2, ..., 30 |
 | Sec. V-D, schedules and census | `ctest`, `run_census.sh` | see `docs/CORRECTNESS.md` | |
 
 The archived Fig. 6 and Fig. 7 campaigns walked the rate ladder per thread
 count (or delay) and stopped once the short-transaction throughput changed by
 less than 5 % or after three invalid points, then repeated the best and the
 next rate twice; the scripts run the whole ladder (`RATES` and `REPS` select a
-subset). The S1-S3 bars of Fig. 9 were measured with an earlier build of the
-same flags; the S4 (freeing off) and S5 bars with the measured build.
+subset).
 
 ## Archived flags
 
@@ -140,6 +141,7 @@ always applies:
 | Archived flag | Value |
 |---|---|
 | `--cc_mode` | 2 (graph mode; the switch to OCC never triggers) |
+| `--epoch_guard_slack` | true (a read may skip a pending version of a writer one epoch older; see `docs/CORRECTNESS.md`) |
 | `--forwarding` | true |
 | `--validation_th_num`, `--validation_threshold` | 1, 100 (serial validation) |
 | `--publish_record_write_facts`, `--complete_read_only_validation` | false, false |
