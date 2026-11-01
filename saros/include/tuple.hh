@@ -51,7 +51,7 @@ public:
   // reinitializing the row detaches it (see logically_delete()).
   RecordGraphState* graph_state_ = nullptr;
 
-  // Unused; keeps sizeof(Tuple) at the measured 192 bytes.
+  // Unused; keeps sizeof(Tuple) at the measured 256 bytes.
   alignas(8) unsigned char reserved_[48] = {};
 
   // The floor of the last gc() of graph_ by Saros's validation, which skips a
@@ -164,6 +164,8 @@ private:
     graph_state_ = registry.create(this);
   }
 };
+
+static_assert(sizeof(Tuple) == 256, "keeps the measured row size");
 
 // The key under which read and write sets name a row.
 inline RowKey row_key(const Tuple* tuple) {
