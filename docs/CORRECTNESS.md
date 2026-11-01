@@ -49,9 +49,16 @@ history for `tools/check_history.py`.
 
 With `OZE_TEST_FREE_CHUNKS_PREFILL=N`, `schedule_test` starts every history
 with N retired entries, so that with freeing on their chunks are unlinked and
-freed before the schedule runs. Running the suite with
-`OZE_TEST_FREE_RETIRED_HISTORY_CHUNKS=0` and `=1` must print the same commit
-vectors.
+freed before the schedule runs. Freeing off and on must print the same commit
+vectors (N = 192 and 200, retirement thresholds 1 and 128); the two
+retirement unit tests assume empty histories and are excluded:
+
+    for f in 0 1; do
+      OZE_TEST_FREE_CHUNKS_PREFILL=200 OZE_TEST_RETIREMENT_THRESHOLD=1 \
+      OZE_TEST_FREE_RETIRED_HISTORY_CHUNKS=$f build/tests/schedule_test \
+        --gtest_filter='-ScheduleTest.Edge*' | grep -o 'schedule=.*commits=[01]*' > free$f.txt
+    done
+    cmp free0.txt free1.txt
 
 ## History checker (Sec. V-D)
 
