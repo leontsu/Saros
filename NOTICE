@@ -1,0 +1,19 @@
+Saros
+
+This software is derived from an extended version of CCBench
+(https://github.com/thawk105/ccbench), a benchmark platform for concurrency
+control protocols by Takayuki Tanabe and others, which includes the Oze
+protocol and the BoMB benchmark. CCBench is distributed under the Apache
+License, Version 2.0 (see LICENSE); this derivative is distributed under the
+same license. Saros, the chunk freeing, the LDBC SNB Q2 driver and the
+correctness tools were added to it; the protocols and workloads not used by
+the paper were removed.
+
+The pseudo-random generator in include/random.hh is based on xoroshiro128+
+by David Blackman and Sebastiano Vigna.
+
+The following components are used as git submodules and are distributed
+under their own licenses:
+  third_party/masstree    Masstree (masstree-beta), MIT-style license
+  third_party/mimalloc    mimalloc, MIT License
+  third_party/googletest  GoogleTest, BSD 3-Clause License
