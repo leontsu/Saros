@@ -11,7 +11,6 @@ set(TEST_SUPPORT_SOURCES
 function(add_saros_test name)
     add_executable(${name} ${name}.cpp ${TEST_SUPPORT_SOURCES})
     target_include_directories(${name}
-            PRIVATE ${PROJECT_SOURCE_DIR}
             PRIVATE ${PROJECT_SOURCE_DIR}/saros
             PRIVATE ${THIRD_PARTY_DIR}/googletest/googletest
             PRIVATE ${THIRD_PARTY_DIR}/googletest/googletest/include
@@ -23,6 +22,7 @@ function(add_saros_test name)
             ${MASSTREE_LIB}
             Threads::Threads
             )
+    set_target_properties(${name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

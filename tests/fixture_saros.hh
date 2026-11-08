@@ -5,13 +5,13 @@
 #include <memory>
 #include <vector>
 
-#include "common.hh"
-#include "result.hh"
-#include "transaction.hh"
-#include "tuple.hh"
-#include "util.hh"
+#include "include/common.hh"
+#include "include/result.hh"
+#include "include/transaction.hh"
+#include "include/tuple.hh"
+#include "include/util.hh"
 
-#include "../../include/tuple_body.hh"
+#include "common/tuple_body.hh"
 #include "gtest/gtest.h"
 
 #define NumVirtualThreads 16

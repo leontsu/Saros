@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <mutex>
 
-#include "../../include/cache_line_size.hh"
+#include "common/cache_line_size.hh"
 #include "transaction_status.hh"
 
 // A worker's participation in the epoch protocol (see ThreadManagementEntry).

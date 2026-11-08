@@ -18,12 +18,12 @@
 #include <queue>
 #include <vector>
 
-#include "../../include/backoff.hh"
-#include "../../include/debug.hh"
-#include "../../include/inline.hh"
-#include "../../include/result.hh"
-#include "../../include/status.hh"
-#include "../../include/util.hh"
+#include "common/backoff.hh"
+#include "common/debug.hh"
+#include "common/inline.hh"
+#include "common/result.hh"
+#include "common/status.hh"
+#include "common/util.hh"
 #include "oze.hh"
 #include "oze_op_element.hh"
 #include "common.hh"

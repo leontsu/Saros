@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "./cache_line_size.hh"
+#include "cache_line_size.hh"
 
 #define MAX_TX_TYPE 10
 

@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "../../include/result.hh"
+#include "common/result.hh"
 
 extern std::vector <Result> OzeResult;
 

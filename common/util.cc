@@ -1,5 +1,5 @@
-#include "./../include/atomic_wrapper.hh"
-#include "./../include/util.hh"
+#include "atomic_wrapper.hh"
+#include "util.hh"
 
 size_t decideParallelBuildNumber(size_t tuple_num) {
   if (tuple_num < 1000) return 1;

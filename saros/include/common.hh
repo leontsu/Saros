@@ -7,10 +7,10 @@
 #include <queue>
 #include <unordered_map>
 
-#include "../../include/cache_line_size.hh"
-#include "../../include/int64byte.hh"
-#include "../../include/masstree_wrapper.hh"
-#include "../../include/lock.hh"
+#include "common/cache_line_size.hh"
+#include "common/int64byte.hh"
+#include "common/masstree_wrapper.hh"
+#include "common/lock.hh"
 
 #include "scan.hh"
 #include "thread_management.hh"

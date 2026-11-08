@@ -17,7 +17,7 @@
 
 #include <gflags/gflags.h>
 
-#include "../../include/cache_line_size.hh"
+#include "common/cache_line_size.hh"
 #include "tuple.hh"
 #include "transaction_status.hh"
 #include "txid.hh"

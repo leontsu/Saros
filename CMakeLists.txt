@@ -22,7 +22,10 @@ find_package(glog REQUIRED)
 
 include(CompileOptions)
 
-add_subdirectory(saros)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+include_directories(${PROJECT_SOURCE_DIR})
+
+add_subdirectory(workloads)
 if (BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)

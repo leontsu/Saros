@@ -2,8 +2,8 @@
 # from the environment; see docs/CONFIGURATIONS.md for the paper's values.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BUILD=${BUILD:-$ROOT/build}
-BOMB=${BOMB:-$BUILD/saros/bomb_saros}
-LDBC=${LDBC:-$BUILD/saros/ldbc_saros}
+BOMB=${BOMB:-$BUILD/bin/bomb_saros}
+LDBC=${LDBC:-$BUILD/bin/ldbc_saros}
 OUT=${OUT:-$ROOT/runs}
 CLOCKS_PER_US=${CLOCKS_PER_US:-1800}  # TSC MHz of the machine
 MEM=${MEM:-64G}                       # memory cap of every run (no swap)

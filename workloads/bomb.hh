@@ -9,15 +9,15 @@
 #include <tuple>
 #include <vector>
 
-#include "debug.hh"
-#include "eval_sampler.hh"
-#include "heap_object.hh"
-#include "queue.hh"
-#include "random.hh"
-#include "result.hh"
-#include "tuple_body.hh"
-#include "util.hh"
-#include "workload.hh"
+#include "common/debug.hh"
+#include "workloads/eval_sampler.hh"
+#include "common/heap_object.hh"
+#include "common/queue.hh"
+#include "common/random.hh"
+#include "common/result.hh"
+#include "common/tuple_body.hh"
+#include "common/util.hh"
+#include "common/workload.hh"
 
 #include "gflags/gflags.h"
 

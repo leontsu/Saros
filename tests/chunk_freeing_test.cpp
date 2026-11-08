@@ -14,7 +14,7 @@
 
 #define GLOBAL_VALUE_DEFINE
 
-#include "../saros/include/test.hh"
+#include "fixture_saros.hh"
 #include "gtest/gtest.h"
 
 namespace {

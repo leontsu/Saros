@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage: scripts/build.sh [build_dir]  (default: build; JOBS=n, default nproc)
-# Builds Masstree and mimalloc into <build_dir>/deps, then Saros (Release).
+# Builds Masstree and mimalloc into <build_dir>/deps, then the binaries into <build_dir>/bin (Release).
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BUILD=$(realpath -m "${1:-$ROOT/build}")

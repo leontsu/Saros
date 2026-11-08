@@ -22,15 +22,15 @@
 #include "include/transaction.hh"
 #include "include/util.hh"
 
-#include "../include/atomic_wrapper.hh"
-#include "../include/backoff.hh"
-#include "../include/debug.hh"
-#include "../include/heap_object.hh"
-#include "../include/random.hh"
-#include "../include/result.hh"
-#include "../include/tuple_body.hh"
-#include "../include/util.hh"
-#include "../include/workload.hh"
+#include "common/atomic_wrapper.hh"
+#include "common/backoff.hh"
+#include "common/debug.hh"
+#include "common/heap_object.hh"
+#include "common/random.hh"
+#include "common/result.hh"
+#include "common/tuple_body.hh"
+#include "common/util.hh"
+#include "common/workload.hh"
 
 DEFINE_string(ldbc_path, "", "LDBC SNB raw CSV directory (.../graphs/csv/raw/composite-merged-fk).");
 DEFINE_uint64(q2_clients, 1, "Threads that run Q2 back to back (taken from --thread_num).");

@@ -3,8 +3,8 @@
 #include <iomanip>
 #include <iostream>
 
-#include "../include/debug.hh"
-#include "../include/result.hh"
+#include "debug.hh"
+#include "result.hh"
 
 using std::cout;
 using std::endl;

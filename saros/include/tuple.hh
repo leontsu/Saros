@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <map>
 
-#include "../../include/cache_line_size.hh"
+#include "common/cache_line_size.hh"
 
 #include <gflags/gflags.h>
 

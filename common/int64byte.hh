@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "./cache_line_size.hh"
+#include "cache_line_size.hh"
 
 class uint64_t_64byte {
 public:

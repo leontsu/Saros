@@ -7,8 +7,8 @@
 #include <atomic>
 #include <cstdint>
 
-#include "../../include/cache_line_size.hh"
-#include "../../include/tuple_body.hh"
+#include "common/cache_line_size.hh"
+#include "common/tuple_body.hh"
 
 using namespace std;
 

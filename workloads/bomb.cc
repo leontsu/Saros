@@ -20,12 +20,12 @@
 #include "include/transaction.hh"
 #include "include/util.hh"
 
-#include "../include/atomic_wrapper.hh"
-#include "../include/backoff.hh"
-#include "../include/bomb.hh"
-#include "../include/debug.hh"
-#include "../include/result.hh"
-#include "../include/util.hh"
+#include "common/atomic_wrapper.hh"
+#include "common/backoff.hh"
+#include "workloads/bomb.hh"
+#include "common/debug.hh"
+#include "common/result.hh"
+#include "common/util.hh"
 
 using namespace std;
 
