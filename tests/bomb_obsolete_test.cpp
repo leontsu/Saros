@@ -45,7 +45,6 @@ protected:
 #endif
         init(Workload::getTableNum());
         initResult();
-        ItemIdCounter.store(0);
         Workload::makeDB(nullptr);
     }
 
