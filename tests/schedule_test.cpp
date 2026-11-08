@@ -269,10 +269,10 @@ TEST_F(ScheduleTest, DesignatedSchedules) {
                            "insert_only_cycle", "propagation_mark_case",
                            "read_only_anomaly"};
     for (bool incremental : {false, true}) {
-        for (bool f13 : {false, true}) {
+        for (bool validate_reads : {false, true}) {
             for (int k = 0; k < 5; ++k) {
                 reinit(incremental);
-                FLAGS_validate_insert_only_reads = f13;
+                FLAGS_validate_insert_only_reads = validate_reads;
                 const std::vector<bool> v =
                     k == 0 ? blind_write_cycle()
                     : k == 1 ? read_crown_cycle()
@@ -281,17 +281,17 @@ TEST_F(ScheduleTest, DesignatedSchedules) {
                              : read_only_anomaly();
                 std::cout << "[ gate     ] designated schedule=" << names[k]
                           << " repr=" << (incremental ? "saros" : "legacy")
-                          << " validate_insert_only_reads=" << f13
+                          << " validate_insert_only_reads=" << validate_reads
                           << " commits=" << vec(v)
                           << " accepted_anomaly=" << all_of(v) << std::endl;
                 if (k == 2) {
-                    EXPECT_EQ(all_of(v), !f13)
-                        << "insert-only cycle: fix=" << f13
+                    EXPECT_EQ(all_of(v), !validate_reads)
+                        << "insert-only cycle: validate_reads=" << validate_reads
                         << " repr=" << incremental;
                 } else {
                     EXPECT_TRUE(all_of(v))
                         << names[k] << " must keep its outcome under Oze's rules with "
-                        << "fix=" << f13 << " repr=" << incremental;
+                        << "validate_reads=" << validate_reads << " repr=" << incremental;
                 }
             }
         }
