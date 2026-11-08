@@ -57,10 +57,8 @@ protected:
 
 std::once_flag RetirementTest::logging_once_;
 
-// Retirement of prefix references. A read fact or edge is stamped with the
-// epochs of its endpoints; a prefix reference is stamped with the transitive
-// retirement bound of the cited prefix, which may hold facts of live
-// transactions that began after the referencing one.
+// A prefix reference is stamped with the transitive bound of the cited prefix, which may hold
+// facts of live transactions that began after the referencing one.
 
 TEST_F(RetirementTest, CitationRetirementDoesNotHideALiveFact) {
     auto run = [this]() -> std::tuple<uint64_t, uint64_t, bool> {

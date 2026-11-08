@@ -20,8 +20,7 @@ void init(int32_t table_num) {
     exit(0);
   }
 
-  // Prepare two (even/odd) scan histories for each table
-  // offset = 2 * storage_index + epoch % 2
+  // Two (even/odd) scan histories per table: offset = 2 * storage_index + epoch % 2.
   if (posix_memalign((void **) &ScanHistory, CACHE_LINE_SIZE,
                      table_num * 2 * sizeof(atomic<ScanEntry*>)) != 0)
     ERR;

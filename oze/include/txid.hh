@@ -21,10 +21,6 @@ struct TxID {
     bool operator>=(const TxID &right) const { return obj_ >= right.obj_; }
     friend std::ostream& operator<<(std::ostream& left, const TxID &right) {
         left << right.epoch << ":" << right.thid << ":" << right.tid;
-             // << right.obj_
-             // << "(epoch=" << right.epoch
-             // << ",thid=" << right.thid
-             // << ",id=" << right.tid << ")";
         return left;
     }
 };

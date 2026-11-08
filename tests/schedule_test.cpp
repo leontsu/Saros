@@ -1,5 +1,5 @@
-// Designated anomaly schedules and randomized schedules, each run on Oze's
-// record graphs (repr=legacy) and on Saros (repr=saros); see ScheduleTest.
+// Designated anomaly schedules and randomized schedules, each run on Oze's record graphs
+// (repr=legacy) and on Saros (repr=saros).
 
 #include <algorithm>
 #include <array>
@@ -53,11 +53,8 @@ protected:
         prefill_retired_histories(incremental);
     }
 
-    // OZE_TEST_FREE_CHUNKS_PREFILL=N: every key's history starts with N facts
-    // of epoch-1 transactions, which a retirer at floor 3 retires (and, with
-    // --free_retired_history_chunks, unlinks and frees), so that the schedule
-    // reads histories whose prefix is gone. Freeing on and off must then decide
-    // every schedule alike.
+    // OZE_TEST_FREE_CHUNKS_PREFILL=N: every history starts with N retired facts, freed with
+    // --free_retired_history_chunks; freeing on and off must decide every schedule alike.
     void prefill_retired_histories(bool incremental) {
         const char* v = std::getenv("OZE_TEST_FREE_CHUNKS_PREFILL");
         if (v == nullptr || !incremental) return;
@@ -200,9 +197,8 @@ protected:
         return {w1, w2c, r};
     }
 
-    // (5) T validates two writes (x, then y); the targets discovered at both
-    // name record p, whose graph holds U -> V. Recorded for both
-    // representations.
+    // (5) T validates two writes; the targets discovered at both name record p, whose graph
+    // holds U -> V.
     std::vector<bool> propagation_mark_case() {
         GlobalEpoch.obj_ = 5;
         for (int i = 0; i < NumVirtualThreads; ++i)
@@ -266,10 +262,8 @@ TEST_F(ScheduleTest, PropagationMarkCase) {
     RUN_GATE("propagation_mark_case", propagation_mark_case(), false);
 }
 
-// Every designated schedule on both representations with
-// --validate_insert_only_reads=false (Oze) and =true (Saros as evaluated).
-// Validating the reads of insert-only transactions rejects the insert-only
-// cycle; every other schedule keeps its outcome under Oze's rules.
+// Every designated schedule on both representations, with and without
+// --validate_insert_only_reads; validating rejects the insert-only cycle only.
 TEST_F(ScheduleTest, DesignatedSchedules) {
     const char* names[] = {"blind_write_discovery_cycle", "read_crown_cycle",
                            "insert_only_cycle", "propagation_mark_case",
@@ -320,14 +314,8 @@ TEST_F(ScheduleTest, ReadOnlyAnomaly) {
 }
 
 
-// Read-set reachability. Oze copies a validator's read set onto every record
-// it validates, so a later validator can reach the other records it read;
-// Saros publishes a read fact only at the record read. Whenever legacy rejects
-// one of these schedules, Saros must too.
-//
-// (A) The read-only anomaly with R also writing a fresh record, so that R
-// takes the full validation path: R -> W1 (rw on a), W1 -> W2 (wr on c),
-// W2 -> R (wr on b).
+// Read-set reachability: whenever Oze rejects one of these schedules, Saros must too.
+// (A) The read-only anomaly with R also writing a fresh record, so R validates fully.
 TEST_F(ScheduleTest, ReadSetWritingReaderAnomaly) {
     auto sched = [&](bool* r_b_from_w2) {
         begin("1"); begin("2"); begin("3");
@@ -360,14 +348,8 @@ TEST_F(ScheduleTest, ReadSetWritingReaderAnomaly) {
             << "reduction violated: legacy rejects but Saros accepts";
 }
 
-// (B) The follower's read lies outside the follower's publication chain.
-//   R reads a(init); F reads x(init);
-//   G overwrites x and writes g, commits            -> F -rw-> G (on x)
-//   F overwrites a, commits                         -> R -rw-> F (on a)
-//   R reads g <- G, writes d, commits               -> G -wr-> R (on g)
-// Cycle R -> F -> G -> R.  F is R's follower; the edge F -> G lives at x, a
-// record F only READ.  Oze copies F's read set onto a when F validates its
-// write of a, so R, validating a, can discover x.
+// (B) Cycle R -> F -> G -> R, where the edge F -> G lives at x, a record F only read; Oze copies
+// F's read set onto a when F validates its write of a, so R can discover x.
 TEST_F(ScheduleTest, ReadSetFollowerReadOutsideChain) {
     auto sched = [&](bool* versions_ok) {
         begin("1"); begin("2"); begin("3");   // R = 1, F = 2, G = 3
@@ -403,12 +385,8 @@ TEST_F(ScheduleTest, ReadSetFollowerReadOutsideChain) {
             << "reduction violated: legacy rejects but Saros accepts";
 }
 
-// (D) Two-L1 cycle (the BoMB shape):
-//   S2 reads p(init)                 ; L1 reads m(init), writes p, commits
-//   S1 reads m(init), writes m       -> L1 -rw-> S1 (on m), S2 -rw-> L1 (on p)
-//   L1' reads m <- S1, writes q      -> S1 -wr-> L1' (on m)
-//   S2 reads q <- L1', inserts, commits  -> L1' -wr-> S2 (on q)
-// The middle edges lie only at m, a record L1 read.
+// (D) Two-L1 cycle (the BoMB shape): S2 -rw-> L1 on p, L1 -rw-> S1 on m, S1 -wr-> L1' on m,
+// L1' -wr-> S2 on q; the middle edges lie only at m, a record L1 read.
 TEST_F(ScheduleTest, TwoL1Cycle) {
     auto sched = [&](bool* ok) {
         begin("1"); begin("2"); begin("3"); begin("4");  // S2, L1, S1, L1'
@@ -441,11 +419,8 @@ TEST_F(ScheduleTest, TwoL1Cycle) {
     std::cout << "[ gate     ] two_l1_cycle saros S2_read_q_from_L1p=" << okv << std::endl;
 }
 
-// (E) Forwarding without an aborted reader:
-//   T1: wa, rc, wc, commit;  T2: ra(init) ... wa, we, commit (validates last)
-//   T3: we, ra(<-T1), commit.
-// T2 forwards its version of a below T1's; nothing orders T3's and T2's
-// writes of e.
+// (E) T2 forwards its version of a below T1's without an aborted reader; nothing orders
+// T3's and T2's writes of e.
 TEST_F(ScheduleTest, ForwardingWithoutAbortedReader) {
     auto sched = [&]() {
         begin("1"); begin("2"); begin("3");
@@ -475,10 +450,8 @@ TEST_F(ScheduleTest, ForwardingWithoutAbortedReader) {
     report("forwarding_without_aborted_reader", true, sar);
 }
 
-// (C) Randomized differential with direction: for each schedule, does Saros
-// commit a transaction that legacy aborts?  OZE_RULES_RANDOM_N schedules (default
-// 2000), OZE_RULES_RANDOM_TX transactions (default 3), OZE_RULES_RANDOM_KEYS
-// keys (default 4), OZE_RULES_RANDOM_SEED base seed (default 1000).
+// (C) For each random schedule, does Saros commit a transaction Oze aborts?
+// OZE_RULES_RANDOM_N, _TX, _KEYS and _SEED set the schedules.
 TEST_F(ScheduleTest, RandomScheduleDirection) {
     auto env = [](const char* k, int d) {
         const char* v = std::getenv(k); return v ? std::atoi(v) : d; };

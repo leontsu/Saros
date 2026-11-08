@@ -1,6 +1,5 @@
 #pragma once
-// --eval_sample_path: per-type commits, aborts and latency of the BoMB
-// driver, sampled once per second (see the Sampler class).
+// --eval_sample_path: per-type commits, aborts and latency of the BoMB driver, once per second.
 
 #include <atomic>
 #include <chrono>
@@ -88,16 +87,8 @@ inline double wall_s() {
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-// Writes one line per second: cumulative commits per transaction type, aborts
-// during execution ("exec") and in commit() ("valid"), the summed end-to-end
-// latency of committed requests, the global and the minimum worker epoch, and
-// the number of short requests dispatched; plus events (load_begin,
-// processing_start, ...). Every line is flushed, so a killed run keeps its
-// series. <path>.lat holds two latency histograms per type (40 buckets per
-// decade of microseconds), rewritten every 10 samples and at the end:
-// e2e_us, from the request's start (enqueue for short requests, generation for
-// L1) to the commit, including queueing and retries; svc_us, from when the
-// worker obtained the request. Counters are per worker thread (single writer).
+// One flushed line per second, plus events; <path>.lat holds two latency histograms per type
+// (e2e_us from the request's start, svc_us from when the worker obtained it). Single writer per counter.
 class Sampler {
 public:
     // `types`: id -> name, captured once so columns stay aligned.

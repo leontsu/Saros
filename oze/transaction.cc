@@ -16,11 +16,6 @@ extern std::vector<Result> OzeResult;
 
 using namespace std;
 
-/**
- * @brief Initialize function of transaction.
- * Allocate timestamp.
- * @return void
- */
 void TxExecutor::begin() {
     if (l1d_on()) { l1d_t0_ = rdtscp(); l1d_val_ = 0; l1d_facts_ = 0; l1d_trav_ = 0; l1d_reads_ = 0; }
     reset_read_set_index();
@@ -35,7 +30,7 @@ void TxExecutor::begin() {
     this->txid_.epoch = e;
     this->reclamation_epoch_ = e - 1;
 
-    // reset flags for insert-only optimization
+    // reset the flags for insert-only transactions
     this->has_write_ = false;
     this->has_insert_ = false;
     this->scan_conflict_found_ = false;
@@ -45,10 +40,6 @@ void TxExecutor::begin() {
 
 }
 
-/**
- * @brief Transaction read function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
 
     Status ret = Status::OK;
@@ -57,9 +48,7 @@ Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
     ReadElement<Tuple>* re;
     WriteElement<Tuple>* we;
 
-    /**
-     * read-own-writes or re-read from local read set.
-     */
+    // Read own writes, or re-read from the local read set.
     re = searchReadSet(s, key);
     if (re) {
         *body = &(re->ver_->body_);
@@ -71,9 +60,6 @@ Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
         goto FINISH_READ;
     }
 
-    /**
-     * Search versions from data structure.
-     */
     tuple = Masstrees[get_storage(s)].get_value(key);
     if (tuple == nullptr) {
         ret = Status::WARN_NOT_FOUND;
@@ -88,9 +74,6 @@ Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
         goto ABORT_READ;
     }
 
-    /**
-     * Read payload.
-     */
     *body = &(ver->body_);
 
 FINISH_READ:
@@ -133,7 +116,6 @@ Status TxExecutor::read_internal(Storage s, std::string_view key, Tuple* tuple, 
       tuple->graph_.at(this->txid_).from_.emplace(target);
     }
 
-    // TODO: read/write set management should be refactored
     this->read_set_.emplace_back(s, key, tuple, ver, target, tuple->tuple_id_);
     this->readSet_.emplace(tuple, target);
 
@@ -142,32 +124,18 @@ OUT:
     return stat;
 }
 
-/**
- * @brief Transaction write function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::write(Storage s, std::string_view key, TupleBody&& body) {
 
     Status ret = Status::OK;
     Tuple *tuple;
 
-    /**
-     * Update  from local write set.
-     * Special treat due to performance.
-     */
     if (searchWriteSet(s, key)) goto FINISH_WRITE;
 
     ReadElement<Tuple> *re;
     re = searchReadSet(s, key);
     if (re) {
-        /**
-         * If it can find record in read set, use this for high performance.
-         */
         tuple = re->rcdptr_;
     } else {
-        /**
-         * Search record from data structure.
-         */
         tuple = Masstrees[get_storage(s)].get_value(key);
         if (tuple == nullptr) {
             ret = Status::WARN_NOT_FOUND;
@@ -187,10 +155,6 @@ FINISH_WRITE:
   return ret;
 }
 
-/**
- * @brief Transaction insert function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::insert(Storage s, std::string_view key, TupleBody&& body) {
 
     if (searchWriteSet(s, key)) return Status::WARN_ALREADY_EXISTS;
@@ -213,12 +177,10 @@ Status TxExecutor::insert(Storage s, std::string_view key, TupleBody&& body) {
     write_set_.emplace_back(s, key, tuple, tuple->ldAcqLatest(), OpType::INSERT);
     has_insert_ = true;
 
-
   return Status::OK;
 }
 
 Status TxExecutor::delete_record(Storage s, std::string_view key) {
-
 
   // cancel previous write
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
@@ -244,7 +206,6 @@ Status TxExecutor::delete_record(Storage s, std::string_view key) {
   new_ver = newVersionGeneration(tuple);
   write_set_.emplace_back(s, key, tuple, new_ver, OpType::DELETE);
   has_write_ = true; // since delete is a sort of update
-
 
   return Status::OK;
 }
@@ -274,8 +235,8 @@ Status TxExecutor::scan(const Storage s,
       right_key.size(), r_exclusive, &scan_res, limit);
 
   for (auto &&itr : scan_res) {
-    // TODO: Tuple should have key? Accessing key through the latest ver is ugly
-    // Must be a copy to avoid buffer overflow when changing the latest
+
+    // A copy: the latest version may change while we read.
     std::string key(itr->latest_.load(memory_order_acquire)->body_.get_key());
     ReadElement<Tuple>* re = searchReadSet(s, key);
     if (re) {
@@ -313,8 +274,6 @@ void TxExecutor::validation_worker(size_t worker_id,
     // copy initial state
     graph.clear();
     graph.insert(this->graph_.begin(), this->graph_.end());
-    // std::cout << "[" << this->txid_ << ":" << worker_id << "] "
-    //           << "Graph size: " << graph.size() << std::endl;
 
     // set assignment
     auto iterator = target_set.begin();
@@ -331,12 +290,9 @@ void TxExecutor::validation_worker(size_t worker_id,
         tuple->graph_.emplace(this->txid_, TxNode(this->txid_));
         tuple->graph_.at(this->txid_).status_ = TransactionStatus::validating;
 
-        // std::cout << "[" << this->txid_ << ":" << worker_id << "] "
-        //           << "Per-page validation start for " << key << std::endl;
 
         // merge graph
         merge(tuple->graph_, graph);
-        // gc(tuple->graph_, this->reclamation_epoch_);
 
         if (has_cycle(tuple->graph_, this->txid_)) {
             clean_up_node_edges(tuple->graph_, this->txid_);
@@ -367,11 +323,8 @@ void TxExecutor::validation_worker(size_t worker_id,
         graph.clear();
         graph.insert(tuple->graph_.begin(), tuple->graph_.end());
 
-        // std::cout << "[" << this->txid_ << ":" << worker_id << "] "
-        //           << "Per-page validation done for " << key << std::endl;
 
         tuple->lock_.w_unlock();
-
 
         if (loadAcquire(this->quit_)) {
             result = TransactionStatus::invalid;
@@ -417,7 +370,7 @@ bool TxExecutor::validation() {
         goto FINISH_VALIDATION;
     }
 
-    // insert-only optimization
+    // Insert-only without reads: only scanner -> inserter conflicts.
     if (!has_write_ && has_insert_ && this->readSet_.empty()) {
       for (auto& we : this->write_set_) {
         if (!insert_validation(we))
@@ -501,10 +454,8 @@ bool TxExecutor::validation() {
 
         for (size_t i = 0; i < workers; ++i) {
             if (result[i] == TransactionStatus::validating) {
-                // std::cout << "Merging results from a worker: " << i << std::endl;
                 merge(this->graph_, graph[i]);
             } else if (result[i] == TransactionStatus::aborted) {
-                // std::cout << "Validation failed in a worker: " << i << std::endl;
                 goto ABORT_VALIDATION;
             } else if (result[i] == TransactionStatus::invalid) {
                 // cancel due to timeout
@@ -516,8 +467,7 @@ bool TxExecutor::validation() {
         }
 
         if (has_cycle(this->graph_, this->txid_)) {
-            // TODO: should we clean up edges on each tuple?
-            // cf. clean_up_node_edges(tuple->graph_, this->txid_);
+
             goto ABORT_VALIDATION;
         }
 
@@ -561,10 +511,7 @@ bool TxExecutor::write_validation(WriteElement<Tuple> element, KeySet& finished_
     merge(tuple->graph_, this->graph_);
     gc(tuple->graph_, this->reclamation_epoch_);
 
-    // add edges and check my RF
-    // 1. find readers (who reads write-target pages?)
-    // 2. add  this txid to readers' writtenBy list
-    // 3. check my RF
+    // Add an edge from every reader of the record to this transaction, then check for a cycle.
     TxSet readers;
     TxSet followers;
     find_readers(tuple->graph_, tuple, readers);
@@ -616,7 +563,6 @@ bool TxExecutor::write_validation(WriteElement<Tuple> element, KeySet& finished_
     if (stat != Status::OK) {
         goto ABORT_VALIDATION;
     }
-
 
     // for propagation
     find_reachable_to(this->txid_, tuple->graph_, reachable_to);
@@ -715,7 +661,6 @@ OUT:
     return true;
 }
 
-
 bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
 
     while (!target_set.empty()) {
@@ -731,7 +676,6 @@ bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
         merge(tuple->graph_, this->graph_);
         gc(tuple->graph_, this->reclamation_epoch_);
 
-
         if (has_cycle(tuple->graph_, this->txid_)) {
             clean_up_node_edges(tuple->graph_, this->txid_);
             tuple->lock_.w_unlock();
@@ -744,7 +688,6 @@ bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
             this->readSet_.begin(), this->readSet_.end()
         );
         tuple->graph_.at(this->txid_).writeSet_.insert(this->writeSet_.begin(), this->writeSet_.end());
-
 
         // for propagation
         KeySet keys;
@@ -776,7 +719,7 @@ bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
 
         if (FLAGS_validation_th_num != 1 &&
             target_set.size() > FLAGS_validation_threshold) {
-            // oops, many propagate found, so fall back parallel validation
+            // Many targets found: continue with parallel validation.
             return true;
         }
 
@@ -787,18 +730,12 @@ bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
     }
 
 FINISH_VALIDATION:
-    // generate_dot_graph("test" + std::to_string(this->txid_.thid), this->graph_);
     return true;
 
 ABORT_VALIDATION:
     return false;
 }
 
-/**
- * @brief function about abort.
- * clean-up local read/write set.
- * @return void
- */
 void TxExecutor::abort() {
 
     writeSetClean();
@@ -807,7 +744,6 @@ void TxExecutor::abort() {
     graph_.clear();
     readSet_.clear();
     writeSet_.clear();
-
 
     mainte();
 

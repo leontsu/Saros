@@ -144,9 +144,7 @@ protected:
     static inline std::once_flag logging_once_;
 };
 
-// A reference (r, cutoff) whose cutoff lies in a freed prefix imports what
-// it imports without freeing: 300 entries, w_r = 150, references (r, 100) and
-// (r, 200).
+// A reference whose cutoff lies in a freed prefix imports what it imports without freeing.
 TEST_F(ChunkFreeingTest, ReferenceIntoFreedPrefixImportsSameAsFlagOff) {
     std::map<bool, std::string> graphs;
     std::map<bool, std::vector<uint64_t>> delivered;
@@ -193,9 +191,8 @@ TEST_F(ChunkFreeingTest, ReferenceIntoFreedPrefixImportsSameAsFlagOff) {
     EXPECT_EQ(delivered[true].front(), 151U);
 }
 
-// A reader inside a chunk that gets unlinked keeps reading it; the
-// production reclaim pass does not free it while the reader's transaction is
-// live, and does once it has ended and the floor has passed the tag.
+// A reader inside an unlinked chunk keeps reading it; reclaim frees it only after the reader's
+// transaction has ended and the floor has passed the tag.
 TEST_F(ChunkFreeingTest,
        ReaderMidIterationInUnlinkedChunkIsNotFreedUntilItsTransactionEnds) {
     Tuple* r = table["r"];
@@ -359,9 +356,8 @@ TEST_F(ChunkFreeingTest, RetainedBytesMatchesAllocatedChunks) {
     }
 }
 
-// Appenders and retirers, importers (which read referenced histories without
-// a latch), lock-free readers and mainte() run concurrently while the epoch
-// advances and every mainte() reclaims. Readers check each slot's sequence.
+// Appenders, retirers, importers, lock-free readers and mainte() run concurrently while the
+// epoch advances; readers check each slot's sequence.
 TEST_F(ChunkFreeingTest, ConcurrentAppendRetireImportReclaimStress) {
     FLAGS_retirement_threshold = 16;
     const double seconds = std::getenv("OZE_TEST_CHUNK_STRESS_SECONDS")
@@ -484,9 +480,8 @@ TEST_F(ChunkFreeingTest, ConcurrentAppendRetireImportReclaimStress) {
         ThManagementTable[i]->atomicStoreParticipation(ParticipationState::Active);
 }
 
-// A deleted record whose history has unlinked chunks and a retired
-// directory: ~RecordGraphState and the registry each free their part once, in
-// either order, and nothing is left.
+// A deleted record with unlinked chunks and a retired directory: ~RecordGraphState and the
+// registry each free their part once, in either order.
 TEST_F(ChunkFreeingTest,
        DeletedRecordDestructorAndRegistryNeverDoubleFreeOrLeak) {
     for (int order = 0; order < 2; ++order) {

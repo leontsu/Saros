@@ -246,9 +246,8 @@ protected:
         uint64_t b_include_seq_of_c = 0;
     };
 
-    // The read-only anomaly (Fekete, O'Neil and O'Neil): W1 blind-writes A and
-    // C; W2 reads C and writes B; R reads A before W1 commits and B after W2
-    // commits. R -> W1 (rw on A), W1 -> W2 (wr on C), W2 -> R (wr on B).
+    // The read-only anomaly (Fekete, O'Neil and O'Neil): R -> W1 (rw on A), W1 -> W2 (wr on C),
+    // W2 -> R (wr on B).
     ReadOnlyAnomalyOutcome run_read_only_anomaly_schedule(bool incremental) {
         reinitialize(incremental);
         ReadOnlyAnomalyOutcome out{};
@@ -324,14 +323,8 @@ protected:
         TxID a_second_txid;
     };
 
-    // A schedule in which ME's validation of A finds the cycle ME -> r -> ME
-    // through its reader r, so that ME must forward or abort:
-    //   0. W blind-writes A and commits (W, not the loader, so that forwarding
-    //      below W closes no real cycle).
-    //   1. ME reads C(init).  2. r reads A (W's version).
-    //   3. r overwrites C and commits: edge ME -> r.
-    //   4. ME blind-writes A and commits: r -> ME would close the cycle, so ME
-    //      places its version below W's (edge ME -> W).
+    // ME's validation of A finds the cycle ME -> r -> ME through its reader r, so ME must forward
+    // or abort; W, not the loader, wrote A, so forwarding below W closes no real cycle.
     ForwardingOutcome run_forwarding_schedule(bool incremental) {
         reinitialize(incremental);
         ForwardingOutcome out{};
@@ -387,10 +380,8 @@ protected:
         bool r_committed = false;
     };
 
-    // A read-only anomaly whose middle edges lie on records (C, D) that R
-    // reaches only through B's prefix references: W1 blind-writes A and C;
-    // W2 reads C and writes D; W3 reads D and writes B; R reads A before W1
-    // validates and B after W3 commits.
+    // A read-only anomaly whose middle edges lie on records (C, D) that R reaches only through
+    // B's prefix references.
     StretchedAnomalyOutcome run_stretched_read_only_anomaly_schedule(bool incremental) {
         reinitialize(incremental);
         StretchedAnomalyOutcome out{};
@@ -426,13 +417,8 @@ protected:
         bool i_committed = false;
     };
 
-    // An insert-only transaction I whose reads close a cycle with W:
-    //   I reads A(init); W blind-writes B, then A, and commits (I -> W on A);
-    //   I reads B (W's version); I inserts a fresh key and validates.
-    // W writes B before A so that Oze's read-time cycle check on B does not
-    // already redirect I to B's initial version. With
-    // --validate_insert_only_reads, I's reads are validated and I aborts;
-    // without it, the insert-only shortcut lets I commit.
+    // An insert-only transaction I whose reads close a cycle with W: with
+    // --validate_insert_only_reads I aborts; without it, the shortcut lets I commit.
     InsertOnlyCycleOutcome run_insert_only_cycle_schedule(bool incremental) {
         reinitialize(incremental);
         InsertOnlyCycleOutcome out{};
@@ -1129,10 +1115,8 @@ TEST_F(HistoryTest, WriteSkewDetectedViaIncludeChain) {
            "via cycle detection; t1=" << t1_committed << " t2=" << t2_committed;
 }
 
-// insert_validation() publishes the scanner -> inserter edge to the inserted
-// record's history. The test drives insert_validation() directly with a
-// hand-made scan entry and a scan range that covers every key prefix (the
-// fixture's 1-byte keys are shorter than the 4-byte prefix).
+// insert_validation() publishes the scanner -> inserter edge to the inserted record's history,
+// driven with a hand-made scan entry and a range covering every key prefix.
 TEST_F(HistoryTest, PhantomEdgePublishedOnInsert) {
     reinitialize(true);
 
@@ -1256,9 +1240,8 @@ TEST_F(HistoryTest, ReadOnlyTrailPublished) {
     EXPECT_EQ(imported.at(ro_id).readSet_.at(row_key(first)), expected_source);
 }
 
-// Oze's merge path commits all three transactions of the read-only anomaly
-// although R read A's initial version and W2's version of B: the W1 -> W2 edge
-// lies only in C's graph, which R's read-only validation never merges.
+// Oze's merge path commits all three: the W1 -> W2 edge lies only in C's graph, which R's
+// read-only validation never merges.
 TEST_F(HistoryTest, ReadOnlyAnomalyLegacy) {
     const auto out = run_read_only_anomaly_schedule(false);
     report_outcome("legacy",
@@ -1277,8 +1260,7 @@ TEST_F(HistoryTest, ReadOnlyAnomalyLegacy) {
     EXPECT_TRUE(out.r_committed);
 }
 
-// Order forwarding: Saros commits what Oze commits on the forwarding
-// schedule, publishes ME -> W rather than the undone reader edge, and places
+// Saros commits what Oze commits on the forwarding schedule, publishes ME -> W, and places
 // ME's version below the version the reader read.
 TEST_F(HistoryTest, ForwardingParityWithLegacy) {
     // Both modes must commit all three transactions.
@@ -1379,11 +1361,8 @@ TEST_F(HistoryTest, InsertOnlyFastPathSkipsReadValidation) {
 
 }  // namespace
 
-// begin() stamps its slot with the global epoch, then takes the minimum over
-// all slots as its epoch; a transaction that begins while another slot lags
-// gets an epoch below its own stamp. Once the slot catches up, a later
-// transaction's floor exceeds the live transaction's epoch. This test checks
-// that this inversion is reachable and that min_live() still bounds it.
+// A transaction that begins while another slot lags gets an epoch below its own stamp; this
+// checks that the resulting floor inversion is reachable and that min_live() still bounds it.
 TEST_F(HistoryTest, RetirementFloorInversionReachabilityProbe) {
     reinitialize(true);
 
@@ -1828,11 +1807,8 @@ struct ThreeTxG3Outcome {
 };
 }  // namespace
 
-// A three-transaction read-only anomaly in which R, the only possible cycle
-// detector, has a floor above the epochs of W1 and W2 (through the real
-// begin() path: an idle slot is raised before R begins and lowered before W1
-// and W2 begin). Write validation's epoch guard aborts W1 first, so the
-// anomaly cannot commit.
+// A read-only anomaly in which R, the only possible cycle detector, has a floor above the
+// epochs of W1 and W2: write validation's epoch guard aborts W1 first.
 TEST_F(HistoryTest, ThreeTransactionReadOnlyAnomalyStyleG3Attempt) {
     {
         reinitialize(true);
@@ -1923,9 +1899,8 @@ int epoch_ticks(int ticks) {
 
 }  // namespace
 
-// Deleted rows: an S4-style delete of a row that a long transaction read. The
-// deleted row's history is imported by identity; the delete's write fact is
-// the reader's rw edge.
+// An S4-style delete of a row a long transaction read: the history is imported by identity,
+// and the delete's write fact is the reader's rw edge.
 class DeletedRowValidationTest : public HistoryTest {
 protected:
     void SetUp() override {
@@ -1950,9 +1925,8 @@ TEST_F(DeletedRowValidationTest, ReaderOfDeletedRowCommitsWhenSerializable) {
     EXPECT_TRUE(commit("2"));
 }
 
-// Write skew through a delete: T2 reads a, T3 reads b, T3 deletes a and
-// commits, T2 writes b.  T2 -rw-> T3 (a) and T3 -rw-> T2 (b): T2 must abort,
-// and it can only see the first edge through the DELETED row's history.
+// Write skew through a delete: T2 -rw-> T3 (a), T3 -rw-> T2 (b). T2 can see the first edge only
+// through the deleted row's history.
 TEST_F(DeletedRowValidationTest, WriteSkewThroughDeletedRowIsDetected) {
     Tuple* row_a = table["a"];
     begin("2");

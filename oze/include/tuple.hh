@@ -73,7 +73,5 @@ public:
     Graph* g = ::new(&graph_) Graph;
     g->emplace(txid, TxNode(txid, TransactionStatus::validating));
 
-    // Omit to add all the key/pages write set of this TxNode.
-    // But probably no problem because no transaction can precede this tx.
   }
 };

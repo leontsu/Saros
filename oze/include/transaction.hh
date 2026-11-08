@@ -118,8 +118,7 @@ public:
 
     }
 
-    // true if every version in the read set was written by the same transaction
-    // (trivially true for an empty read set)
+    // True if every version in the read set has the same writer (an empty set counts).
     bool read_set_single_writer() {
         auto itr = read_set_.begin();
         if (itr == read_set_.end()) return true;
@@ -138,19 +137,8 @@ public:
         return new Version(this->txid_, std::move(body));
     }
 
-    /**
-     * @brief Search xxx set
-     * @detail Search element of local set corresponding to given key.
-     * In this prototype system, the value to be updated for each worker thread 
-     * is fixed for high performance, so it is only necessary to check the key match.
-     * @param Key [in] the key of key-value
-     * @return Corresponding element of local set
-     */
-    // READ-SET INDEX (--read_set_hash_index; identical to the Saros tree).
-    // Built lazily: each lookup first indexes the elements appended since the
-    // previous lookup (read_set_ is only appended to and cleared), and a
-    // shrunken read_set_ resets the index.  Positions, not pointers; emplace
-    // keeps the FIRST occurrence, which is what the linear scan returns.
+    // --read_set_hash_index: an index over read_set_, built lazily; it keeps the first
+    // occurrence, like the linear scan.
     std::unordered_map<std::string, uint32_t> rs_index_;
     size_t rs_indexed_ = 0;
     static std::string rs_index_key(Storage s, std::string_view key) {
@@ -184,14 +172,6 @@ public:
         return nullptr;
     }
 
-    /**
-     * @brief Search xxx set
-     * @detail Search element of local set corresponding to given key.
-     * In this prototype system, the value to be updated for each worker thread 
-     * is fixed for high performance, so it is only necessary to check the key match.
-     * @param Key [in] the key of key-value
-     * @return Corresponding element of local set
-     */
     inline WriteElement<Tuple> *searchWriteSet(Storage s, std::string_view key) {
         for (auto &we : write_set_) {
             if (we.storage_ != s) continue;
@@ -294,7 +274,7 @@ public:
         // find transactions that can be visited from start transaction
         std::map<TxID,bool> seen;
         for (const auto& next : g.at(start).readBy_) {
-            // TODO: This kind of checking might be skipped if merge/GC works well-mannered
+
             if (auto it = g.find(next); it != g.end())
                 find_reachable_to_dfs(g, seen, next);
         }
@@ -327,7 +307,7 @@ public:
     }
 
     void update_read_from(Tuple* tuple, Version* ver) {
-        // TODO: do not remove TxNode if the version still alive?
+
         if (auto it = tuple->graph_.find(ver->txid_); it == tuple->graph_.end()) {
             tuple->graph_.emplace(ver->txid_, TxNode(ver->txid_));
         }
@@ -417,7 +397,7 @@ OUT:
         if (quit_) {
             dump(thid_, "WARN: Quit cycle check because benchmark has finished.");
             status_ = TransactionStatus::invalid;
-            return true; // TODO: should return with INVALID
+            return true;
         }
         seen.emplace(txID, true);
         TxSet edges(g.at(txID).readBy_);
@@ -453,8 +433,7 @@ OUT:
         return false;
     }
 
-    // L1 COST DIAGNOSTIC (--l1_cost_diag, thread 0 only): dependency facts
-    // (read/write-set entries and edges) copied by validation, and timings.
+    // --l1_cost_diag (thread 0): dependency facts copied by validation, and timings.
     uint64_t l1d_t0_ = 0, l1d_val_ = 0, l1d_facts_ = 0;
     uint64_t l1d_trav_ = 0, l1d_reads_ = 0;   // DFS nodes+edges visited; read-set size
     bool l1d_on() const { return FLAGS_l1_cost_diag && thid_ == 0; }
@@ -508,11 +487,11 @@ OUT:
 
     void erase_following_edges(Graph &g, const TxID txid) {
         for (auto& reader : g.at(txid).readBy_) {
-            if (auto it = g.find(reader); it != g.end()) // TODO: why is this check necessary?
+            if (auto it = g.find(reader); it != g.end())
                 g.at(reader).from_.erase(txid);
         }
         for (auto& writer : g.at(txid).writtenBy_) {
-            if (auto it = g.find(writer); it != g.end()) // TODO: why is this check necessary?
+            if (auto it = g.find(writer); it != g.end())
                 g.at(writer).from_.erase(txid);
         }
     }
@@ -526,7 +505,7 @@ OUT:
                 for (auto i = txNode->readBy_.begin(); i != txNode->readBy_.end();) {
                     auto reader = (*i);
                     if (reader.epoch <= epoch) {
-                        if (auto it = g.find(reader); it != g.end()) // TODO: why is this check necessary?
+                        if (auto it = g.find(reader); it != g.end())
                             g.at(reader).from_.erase(txid);
                         i = txNode->readBy_.erase(i);
                     } else {
@@ -537,7 +516,7 @@ OUT:
                 for (auto i = txNode->writtenBy_.begin(); i != txNode->writtenBy_.end();) {
                     auto writer = (*i);
                     if (writer.epoch <= epoch) {
-                        if (auto it = g.find(writer); it != g.end()) // TODO: why is this check necessary?
+                        if (auto it = g.find(writer); it != g.end())
                             g.at(writer).from_.erase(txid);
                         i = txNode->writtenBy_.erase(i);
                     } else {
@@ -561,9 +540,6 @@ OUT:
                     ++it;
                     continue;
                 }
-                //           << ", Reclaimation epoch = " << epoch
-                //           << ", Local epoch = " << ThLocalEpoch[thid_].obj_
-                //           << ")" << std::endl;
                 erase_following_edges(g, txid);
                 it = g.erase(it);
             }
@@ -601,22 +577,18 @@ OUT:
     }
 
     void clean_up_node_edges(Graph &g, const TxID txid) {
-        // TODO: can be sophisticated?
+
         for (const auto& to : g.at(txid).writtenBy_) {
-            if (auto it = g.find(to); it != g.end()) // TODO: can be checkless?
+            if (auto it = g.find(to); it != g.end())
                 g.at(to).from_.erase(txid);
         }
         for (const auto& from : g.at(txid).from_) {
-            if (auto it = g.find(from); it != g.end()) { // TODO: can be checkless?
+            if (auto it = g.find(from); it != g.end()) {
                 g.at(from).readBy_.erase(txid);
                 g.at(from).writtenBy_.erase(txid);
             }
         }
-        // We want to just remove this aborted node,
-        // but some other worker may have seen this node
-        // (that is still inflight at that time), and try to merge
-        // without knowing it has already aborted.
-        // So, just mark it aborted and prevent it from adding edges
+        // The node stays, marked aborted: a worker that saw it in flight may still try to merge it.
         g.at(txid).readBy_.clear();
         g.at(txid).writtenBy_.clear();
         g.at(txid).from_.clear();

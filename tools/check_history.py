@@ -18,14 +18,8 @@ class Txn:
         self.writes = writes  # list of (storage, key, pred_or_None, install_seq_or_None)
 
 
-# Loads every history_<thid>.log under dump_dir: one JSON object per committed
-# transaction,
-#   {"txid": "epoch:thid:tid", "order": n,
-#    "reads":  [{"s": storage, "key": "<hex>", "vtxid": "epoch:thid:tid"}, ...],
-#    "writes": [{"s": storage, "key": "<hex>", "pred": "epoch:thid:tid" | null,
-#                "install_seq": n | null}, ...]}
-# where pred is the version below the written one (null for an insert) and
-# install_seq the global order of version installs.
+# Loads every history_<thid>.log under dump_dir: one JSON object per committed transaction.
+# pred is the version below the written one (null for an insert); install_seq the global install order.
 def load_history(dump_dir):
     files = sorted(glob.glob(os.path.join(dump_dir, "history_*.log")))
     if not files:
@@ -49,12 +43,8 @@ def load_history(dump_dir):
     return txns
 
 
-# Returns (storage, key) -> the final version chain, oldest first. With order
-# forwarding, two writers can record the same predecessor (a later install is
-# spliced below an earlier one), so the splices are replayed per key in
-# install_seq order, as insert_version() performs them: writer goes above pred,
-# and whoever was above pred moves above writer. The oldest version of a key
-# (loaded before the dump started) is inferred from the earliest splice.
+# Returns (storage, key) -> the final version chain, oldest first. Order forwarding can splice a later
+# install below an earlier one, so the splices are replayed per key in install_seq order.
 def recover_version_order(txns):
     per_key_writes = defaultdict(list)
     for txn in txns:
@@ -109,9 +99,8 @@ def recover_version_order(txns):
     return order
 
 
-# The direct serialization graph, as (src, dst, kind, key) with src before dst:
-# wr writer -> reader, ww version -> next version, rw reader -> writer of the
-# next version.
+# The direct serialization graph, as (src, dst, kind, key): wr writer -> reader, ww version -> next
+# version, rw reader -> writer of the next version.
 def build_edges(txns, version_order):
     committed = {t.txid for t in txns}
     edges = []

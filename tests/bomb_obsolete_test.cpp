@@ -129,7 +129,7 @@ protected:
     bool quit_ = false;
 };
 
-// One test, because rows stay deleted: first the published workload, then the marking.
+// One test, because rows stay deleted: first without the marking, then with it.
 TEST_F(BombObsoleteTest, MarkingKeepsOneWriterAndS2SkipsTheRow) {
     FLAGS_bomb_mark_obsolete = false;
     run_l1();

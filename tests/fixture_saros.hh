@@ -31,8 +31,7 @@ struct Data {
   }
 };
 
-// Frees the version chain of a test-owned row (~Tuple() does not). Call it
-// once per row, after every executor is destroyed.
+// Frees the version chain of a test-owned row, after every executor is destroyed.
 inline void release_version_chain(Tuple* tuple) {
     if (tuple == nullptr) return;
     Version* v = tuple->latest_.load(std::memory_order_acquire);
@@ -44,8 +43,7 @@ inline void release_version_chain(Tuple* tuple) {
     }
 }
 
-// At exit, one stderr line with the chunk-freeing counters, if any chunk was
-// unlinked in this test binary.
+// At exit, one stderr line with the chunk-freeing counters.
 struct HistoryChunkRegistryExitReport {
     ~HistoryChunkRegistryExitReport() {
         const auto& c = ChunkRetirementRegistry::counters();
@@ -68,14 +66,11 @@ struct HistoryChunkRegistryExitReport {
 };
 inline HistoryChunkRegistryExitReport history_chunk_registry_exit_report;
 
-// The test fixture: 16 executors and the rows 'a'..'z' of one table. The
-// fixture owns its executors, rows and epoch entries (owned_*); txmap and
-// table are non-owning views. TearDown() destroys them in a fixed order.
+// The test fixture of the Saros engine: 16 executors and the rows 'a'..'z' of one table.
 class TestCase : public ::testing::Test {
 protected:
     virtual void SetUp() {
-        // OZE_TEST_HISTORY_DUMP_PATH: the history dump of this test process
-        // (the executors write it when TearDown() destroys them).
+        // OZE_TEST_HISTORY_DUMP_PATH: the history dump of this test process.
         saved_history_dump_path_ = FLAGS_history_dump_path;
         if (const char* path = std::getenv("OZE_TEST_HISTORY_DUMP_PATH")) {
             FLAGS_history_dump_path = path;
@@ -118,9 +113,7 @@ protected:
         apply_test_env();
     }
 
-    // Environment overrides (gtest_main does not parse flags):
-    // OZE_TEST_VALIDATE_INSERT_ONLY_READS, OZE_TEST_FREE_RETIRED_HISTORY_CHUNKS
-    // (0/1) and OZE_TEST_RETIREMENT_THRESHOLD (the retirement threshold).
+    // Environment overrides, because gtest_main does not parse flags.
     static void apply_test_env() {
         if (const char* io =
                 std::getenv("OZE_TEST_VALIDATE_INSERT_ONLY_READS")) {
@@ -136,10 +129,7 @@ protected:
         }
     }
 
-    // Destroys the fixture in this order: the index entries, the views, the
-    // executors (which write the history dump), the version chains, the rows
-    // (which detach their histories), unlinked chunks, scan entries and the
-    // epoch entries.
+    // Destroys the fixture in a fixed order; the executors write the history dump here.
     virtual void TearDown() {
         Masstrees[get_storage(Storage::TestTable)].table_init();
         txmap.clear();

@@ -1,5 +1,5 @@
-// TuskFlow's LDBC SNB Q2 workload: open-loop short transactions on Persons and
-// Messages, and --q2_clients threads that run Q2 (q2_worker).
+// TuskFlow's LDBC SNB Q2 workload: open-loop short transactions on Persons and Messages, and
+// --q2_clients threads that run Q2. Compiled once per engine.
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
@@ -65,8 +65,8 @@ struct GraphRecord {
 };
 
 namespace {
-// TuskFlow's Q2 parameters: each client's Country (about 190-200 Persons each
-// in SF3), a candidate's knows distance, a hub's minimum degree (x average).
+// TuskFlow's Q2 parameters: each client's Country, a candidate's knows distance, a hub's
+// minimum degree (x average).
 const char* const kQ2Countries =
     "Ethiopia,South_Korea,Niger,Colombia,Greece,Senegal,Romania,Iran,Australia,Tunisia,Cuba,"
     "Argentina,Sri_Lanka,South_Africa,Egypt,Kenya";
@@ -108,9 +108,8 @@ void for_rows(const std::string& folder, F&& f) {
     f(cols);
   }
 }
-// Loads an LDBC SNB raw-CSV data set (graphs/csv/raw/composite-merged-fk).
-// Persons become records 0..P-1 and Messages records P..P+M-1. No transaction
-// changes the graph structure, so it is kept as static in-memory adjacency.
+// Persons become records 0..P-1 and Messages records P..P+M-1. No transaction changes the graph
+// structure, so it is kept as static in-memory adjacency.
 void load_graph() {
   const double t0 = (double)clock() / CLOCKS_PER_SEC;
   std::unordered_map<int64_t, uint32_t> person;   // LDBC id -> Person key
@@ -301,13 +300,7 @@ ABORT:
   goto RETRY;
 }
 
-// TuskFlow's RandomFriendMessages{Read,Update}Tx: from a uniformly chosen
-// Person, read the Person, then pick kLdbcOps - 1 of its incoming relationships
-// uniformly; for each pick that is a hasCreator edge, read the Message
-// (read-only transaction) or read and update it (update transaction, with
-// probability 100 - --ldbc_read_ratio percent). The Person's other incoming
-// relationships (Forum hasMember, knows) only shape the pick distribution.
-// Open loop at --tf_rate transactions per second over all short threads;
+// TuskFlow's RandomFriendMessages{Read,Update}Tx, open loop at --tf_rate over all short threads;
 // latency runs from a transaction's scheduled arrival to its commit.
 void short_worker(size_t thid, size_t nreg, char& ready, const bool& start, const bool& quit) {
   Backoff backoff(FLAGS_clocks_per_us);
@@ -358,16 +351,8 @@ void idle_until(size_t thid, double until_us, const bool& quit) {
   }
 }
 
-// TuskFlow's Q2 (FindExpertsLongRunningTx, a variant of the LDBC BI query
-// "Experts in social circle") with the BI query's Country parameter. From a hub
-// Person, the candidates are the Persons first reached at knows distance
-// kQ2MinPath..kQ2MaxPath who live in this client's Country; the source Tags are
-// the Tags of the hub's Messages. For each candidate, Q2 counts the Tags of its
-// Messages that are source Tags and writes the count to the candidate. The
-// traversal reads only the static graph structure; the transaction reads and
-// writes the candidates. Client i takes the i-th of kQ2Countries, so clients
-// write disjoint Persons. --q2_stmt_delay_us = d: the search is one statement
-// and each candidate's update another, each followed by a round trip of d.
+// TuskFlow's Q2 (FindExpertsLongRunningTx) with the BI query's Country: client i takes the i-th of
+// kQ2Countries, so clients write disjoint Persons; each statement is followed by the round trip.
 void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
   Backoff backoff(FLAGS_clocks_per_us);
   TxExecutor tx(thid, backoff, (Result*)&OzeResult[thid], quit);
