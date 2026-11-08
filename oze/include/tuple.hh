@@ -7,7 +7,7 @@
 #include "common/cache_line_size.hh"
 
 #include "oze.hh"
-#include "version.hh"
+#include "common/engine/version.hh"
 
 // Ends a version chain ("no older version"); nullptr means no readable version.
 #define VERSION_TERMINATION (Version*)0x1

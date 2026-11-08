@@ -4,7 +4,7 @@
 #include <cstdint>
 
 #include "common/cache_line_size.hh"
-#include "transaction_status.hh"
+#include "common/engine/transaction_status.hh"
 
 class ThreadManagementEntry {
   public:

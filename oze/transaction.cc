@@ -5,11 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "include/atomic_tool.hh"
+#include "common/engine/atomic_tool.hh"
 #include "include/common.hh"
 #include "include/transaction.hh"
-#include "include/txid.hh"
-#include "include/version.hh"
+#include "common/engine/txid.hh"
+#include "common/engine/version.hh"
 
 extern void ozeLeaderWork(uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop);
 extern std::vector<Result> OzeResult;

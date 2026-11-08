@@ -2,8 +2,8 @@
 
 #include "common/op_element.hh"
 
-#include "txid.hh"
-#include "version.hh"
+#include "common/engine/txid.hh"
+#include "common/engine/version.hh"
 
 template<typename T>
 class ReadElement : public OpElement<T> {

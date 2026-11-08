@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "common.hh"
-#include "result.hh"
+#include "common/engine/result.hh"
 #include "transaction.hh"
 
 // --retention_sample_path: one flushed TSV line per sample of process memory, record states,

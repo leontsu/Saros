@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "include/common.hh"
-#include "include/result.hh"
+#include "common/engine/result.hh"
 #include "include/transaction.hh"
 #include "include/tuple.hh"
-#include "include/util.hh"
+#include "common/engine/util.hh"
 
 #include "common/tuple_body.hh"
 #include "gtest/gtest.h"

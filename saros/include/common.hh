@@ -12,10 +12,10 @@
 #include "common/masstree_wrapper.hh"
 #include "common/lock.hh"
 
-#include "scan.hh"
+#include "common/engine/scan.hh"
 #include "thread_management.hh"
 #include "tuple.hh"
-#include "version.hh"
+#include "common/engine/version.hh"
 
 #include "gflags/gflags.h"
 #include "glog/logging.h"

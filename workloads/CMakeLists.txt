@@ -3,7 +3,7 @@ function(add_benchmark name source engine)
     add_executable(${name} ${source}
             "${PROJECT_SOURCE_DIR}/common/result.cc"
             "${PROJECT_SOURCE_DIR}/common/util.cc"
-            "${PROJECT_SOURCE_DIR}/${engine}/result.cc"
+            "${PROJECT_SOURCE_DIR}/common/engine/result.cc"
             "${PROJECT_SOURCE_DIR}/${engine}/transaction.cc"
             "${PROJECT_SOURCE_DIR}/${engine}/util.cc")
     target_include_directories(${name} PRIVATE "${PROJECT_SOURCE_DIR}/${engine}")

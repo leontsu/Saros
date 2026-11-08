@@ -5,7 +5,7 @@
 #include <atomic>
 #include <cstdint>
 
-#include "txid.hh"
+#include "common/engine/txid.hh"
 
 class ScanEntry {
 public:

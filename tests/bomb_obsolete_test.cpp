@@ -6,11 +6,11 @@
 
 #define GLOBAL_VALUE_DEFINE
 
-#include "include/atomic_tool.hh"
+#include "common/engine/atomic_tool.hh"
 #include "include/common.hh"
-#include "include/result.hh"
+#include "common/engine/result.hh"
 #include "include/transaction.hh"
-#include "include/util.hh"
+#include "common/engine/util.hh"
 
 #include "common/backoff.hh"
 #include "common/util.hh"

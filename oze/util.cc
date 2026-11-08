@@ -4,9 +4,9 @@
 #include <iostream>
 
 #include "common/backoff.hh"
-#include "include/atomic_tool.hh"
+#include "common/engine/atomic_tool.hh"
 #include "include/common.hh"
-#include "include/util.hh"
+#include "common/engine/util.hh"
 
 using std::cout, std::endl;
 

@@ -9,8 +9,8 @@
 
 #include "common/cache_line_size.hh"
 #include "tuple.hh"
-#include "transaction_status.hh"
-#include "txid.hh"
+#include "common/engine/transaction_status.hh"
+#include "common/engine/txid.hh"
 
 class Tuple;
 typedef Tuple* Key;

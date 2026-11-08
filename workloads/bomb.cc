@@ -9,9 +9,9 @@
 #define GLOBAL_VALUE_DEFINE
 
 #include "include/common.hh"
-#include "include/result.hh"
+#include "common/engine/result.hh"
 #include "include/transaction.hh"
-#include "include/util.hh"
+#include "common/engine/util.hh"
 
 #include "common/atomic_wrapper.hh"
 #include "common/backoff.hh"

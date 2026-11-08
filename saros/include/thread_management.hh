@@ -5,7 +5,7 @@
 #include <mutex>
 
 #include "common/cache_line_size.hh"
-#include "transaction_status.hh"
+#include "common/engine/transaction_status.hh"
 
 // A worker's participation in the epoch protocol.
 enum class ParticipationState : uint8_t {

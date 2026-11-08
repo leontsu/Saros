@@ -19,8 +19,8 @@
 
 #include "common/cache_line_size.hh"
 #include "tuple.hh"
-#include "transaction_status.hh"
-#include "txid.hh"
+#include "common/engine/transaction_status.hh"
+#include "common/engine/txid.hh"
 
 // Defined in common.hh; RecordGraphState's readers and writers branch on it.
 DECLARE_bool(free_retired_history_chunks);

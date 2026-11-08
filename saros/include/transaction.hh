@@ -25,13 +25,13 @@
 #include "common/status.hh"
 #include "common/util.hh"
 #include "oze.hh"
-#include "oze_op_element.hh"
+#include "common/engine/oze_op_element.hh"
 #include "common.hh"
-#include "atomic_tool.hh"
-#include "scan.hh"
+#include "common/engine/atomic_tool.hh"
+#include "common/engine/scan.hh"
 #include "tuple.hh"
-#include "txid.hh"
-#include "version.hh"
+#include "common/engine/txid.hh"
+#include "common/engine/version.hh"
 
 /**
  * @brief Deferred freeing of deleted rows (a committed delete or an aborted insert).

@@ -9,7 +9,7 @@
 #include <gflags/gflags.h>
 
 #include "oze.hh"
-#include "version.hh"
+#include "common/engine/version.hh"
 
 DECLARE_bool(reuse_fresh_graph_state);
 
