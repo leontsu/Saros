@@ -46,6 +46,9 @@ DEFINE_uint32(bomb_material_per_wip, 3, "Raw materials per leaf work-in-progress
 DEFINE_uint32(bomb_base_product_size_per_factory, 100,
               "Products each factory manufactures (the products one L1 costs).");
 DEFINE_uint32(bomb_mc_update_size, 1, "Materials one S1 updates.");
+DEFINE_bool(bomb_mark_obsolete, false,
+            "Obsolete-row BoMB: L1 rewrites the ProductCostMaster rows of products no "
+            "longer in ItemManufacturingMaster as obsolete, and S2 skips such rows.");
 #else
 DECLARE_uint32(bomb_mixed_short_rate);
 DECLARE_bool(bomb_mixed_short_rate_tps);
@@ -64,6 +67,7 @@ DECLARE_uint32(bomb_base_tree_size);
 DECLARE_uint32(bomb_material_per_wip);
 DECLARE_uint32(bomb_base_product_size_per_factory);
 DECLARE_uint32(bomb_mc_update_size);
+DECLARE_bool(bomb_mark_obsolete);
 #endif
 
 typedef std::chrono::high_resolution_clock::time_point timepoint;
@@ -136,6 +140,8 @@ struct ProductCostMaster {
   std::uint32_t pc_factory_id;
   std::uint32_t pc_product_id;
   double pc_cost;
+  // The product left ItemManufacturingMaster. L1 keeps rewriting the row, and S2 skips it.
+  bool pc_obsolete;
 
   static void CreateKey(uint32_t pc_factory_id, uint32_t pc_product_id, char *out) {
     assign_as_bigendian(pc_factory_id, &out[0]);
@@ -403,7 +409,8 @@ public:
       tx.abort();
     }
 
-    Status update_product_cost_master(TxExecutor& tx, uint32_t f_id, uint32_t p_id, double cost) {
+    Status update_product_cost_master(TxExecutor& tx, uint32_t f_id, uint32_t p_id, double cost,
+                                      bool obsolete = false) {
       SimpleKey<8> key;
       ProductCostMaster::CreateKey(f_id, p_id, key.ptr());
       HeapObject obj;
@@ -412,6 +419,7 @@ public:
       pc.pc_factory_id = f_id;
       pc.pc_product_id = p_id;
       pc.pc_cost = cost;
+      pc.pc_obsolete = obsolete;
       Status status = tx.write(Storage::ProductCostMaster, key.view(), TupleBody(key.view(), std::move(obj)));
       return status;
     }
@@ -472,6 +480,7 @@ public:
       uint32_t credit = 1;
       for (auto& tuple : result) {
         const ProductCostMaster& pm = tuple->get_value().cast_to<ProductCostMaster>();
+        if (pm.pc_obsolete) continue;
         double manufactured_quantity = 99.9;
         insert_journal_voucher(tx, debit, credit, manufactured_quantity*pm.pc_cost);
         if (tx.status_ == TransactionStatus::aborted) return;
@@ -495,6 +504,36 @@ public:
         mc.mc_stock_price = old.mc_stock_price + 1.0;
         tx.write(Storage::MaterialCostMaster, key.view(), TupleBody(key.view(), std::move(obj)));
       }
+    }
+
+    // Rewrites as obsolete every cost row of the factory whose product is not in
+    // `costs`, so that one writer covers all of the factory's rows.
+    bool mark_obsolete_product_cost_master(TxExecutor& tx, uint32_t f_id,
+                                           const std::map<uint32_t,double>& costs) {
+      SimpleKey<8> low, up;
+      std::vector<TupleBody*> result;
+      ProductCostMaster::CreateKey(f_id, 0, low.ptr());
+      ProductCostMaster::CreateKey(f_id+1, 0, up.ptr());
+      tx.scan(Storage::ProductCostMaster, low.view(), false, up.view(), true, result);
+      if (tx.status_ == TransactionStatus::aborted) return false;
+
+      std::vector<std::pair<uint32_t,double>> obsolete;
+      for (auto& tuple : result) {
+        const ProductCostMaster& pm = tuple->get_value().cast_to<ProductCostMaster>();
+        if (costs.find(pm.pc_product_id) == costs.end()) {
+          obsolete.emplace_back(pm.pc_product_id, pm.pc_cost);
+        }
+      }
+      for (const auto& [p_id, cost] : obsolete) {
+        update_product_cost_master(tx, f_id, p_id, cost, true);
+        if (tx.status_ == TransactionStatus::aborted) return false;
+        if (tx.quit_) {
+          tx.abort();
+          tx.status_ = TransactionStatus::invalid;
+          return false;
+        }
+      }
+      return true;
     }
 
     // L1 on a static BoM: cost every cached product from the factory's
@@ -522,6 +561,7 @@ public:
           return;
         }
       }
+      if (FLAGS_bomb_mark_obsolete) mark_obsolete_product_cost_master(tx, f_id, costs);
     }
 
     // L1 on a dynamic BoM: the same, but the products and their BoM trees are
@@ -568,6 +608,7 @@ public:
           return;
         }
       }
+      if (FLAGS_bomb_mark_obsolete) mark_obsolete_product_cost_master(tx, f_id, costs);
     }
 
     void run_update_product_cost_master(TxExecutor& tx, Query& query) {
@@ -613,6 +654,7 @@ public:
       p_tuple.pc_factory_id = f_id;
       p_tuple.pc_product_id = p_id;
       p_tuple.pc_cost = cost;
+      p_tuple.pc_obsolete = false;
       return tx.insert(Storage::ProductCostMaster, key.view(), TupleBody(key.view(), std::move(obj)));
     }
 
@@ -897,6 +939,7 @@ RETRY:
       p_tuple.pc_factory_id = f_id;
       p_tuple.pc_product_id = p_id;
       p_tuple.pc_cost = cost;
+      p_tuple.pc_obsolete = false;
       Tuple* tmp = new Tuple();
       tmp->init(thid, TupleBody(key.view(), std::move(obj)), p);
       Masstrees[get_storage(Storage::ProductCostMaster)].insert_value(key.view(), tmp);
