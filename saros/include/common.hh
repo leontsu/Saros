@@ -48,6 +48,10 @@ DEFINE_uint64(retirement_threshold, 128,
 DEFINE_bool(validate_insert_only_reads, true,
             "Validate the reads of insert-only transactions. false = Oze's shortcut, "
             "which skips their read validation.");
+DEFINE_bool(insert_only_single_writer, true,
+            "Single-writer insert-only rule: an insert-only transaction skips read "
+            "validation if all versions it read have one writer and no scan covers its "
+            "inserts; mixed writers abort. false = it validates its reads.");
 DEFINE_uint64(insert_only_discovery_limit, 1000,
               "Saros: abort (and retry) an insert-only transaction whose propagation "
               "targets exceed this many records (0 = no limit).");
@@ -87,6 +91,7 @@ DECLARE_uint64(thread_num);
 DECLARE_bool(saros);
 DECLARE_uint64(retirement_threshold);
 DECLARE_bool(validate_insert_only_reads);
+DECLARE_bool(insert_only_single_writer);
 DECLARE_uint64(insert_only_discovery_limit);
 DECLARE_uint64(short_discovery_limit);
 DECLARE_bool(free_retired_history_chunks);
@@ -102,6 +107,9 @@ DECLARE_uint64(retention_sample_interval_s);
 #endif
 
 GLOBAL uint64_t TotalThreadNum;
+GLOBAL std::atomic<uint64_t> InsertOnlySkips;        // read validation skipped
+GLOBAL std::atomic<uint64_t> InsertOnlyMixedAborts;  // aborted, mixed writers
+GLOBAL std::atomic<uint64_t> InsertOnlyScanFalls;    // a scan covers the inserts: full validation
 
 alignas(CACHE_LINE_SIZE) GLOBAL Tuple *Table;
 alignas(CACHE_LINE_SIZE) GLOBAL ThreadManagementEntry **ThManagementTable;

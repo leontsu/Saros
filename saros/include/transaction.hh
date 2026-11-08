@@ -448,6 +448,7 @@ public:
     bool is_forwarded_;
     bool has_write_ = false;
     bool has_insert_ = false;
+    bool scan_conflict_found_ = false;  // a scan covers one of this transaction's inserts
 
     // --l1_cost_diag: one #l1cost line per commit of thread 0 (the BoMB L1 thread).
     uint64_t l1d_t0_ = 0, l1d_val_ = 0, l1d_facts_ = 0;
@@ -636,6 +637,17 @@ public:
 
     void backoff() {
         Backoff::backoff(FLAGS_clocks_per_us);
+    }
+
+    // True if every version in the read set has the same writer (an empty set counts).
+    bool read_set_single_writer() {
+        auto itr = read_set_.begin();
+        if (itr == read_set_.end()) return true;
+        const TxID writer = itr->txid_;
+        for (++itr; itr != read_set_.end(); ++itr) {
+            if (itr->txid_ != writer) return false;
+        }
+        return true;
     }
 
     Version *newVersionGeneration([[maybe_unused]] Tuple *tuple) {

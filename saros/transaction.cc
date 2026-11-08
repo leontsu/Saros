@@ -52,9 +52,10 @@ void TxExecutor::begin() {
     // get_min_epoch() alone can move past an older live transaction's floor.
     ReclamationFloorAnnouncer::announce(this->thid_, this->reclamation_epoch_);
 
-    // reset a flag for insert-only optimization
+    // reset the flags for insert-only transactions
     this->has_write_ = false;
     this->has_insert_ = false;
+    this->scan_conflict_found_ = false;
 
     // just for statistics
     this->is_forwarded_ = false;
@@ -342,6 +343,9 @@ bool TxExecutor::validation() {
     KeySet finished_set;
     KeySet propagate_set;
 
+    bool insert_only = FLAGS_validate_insert_only_reads && FLAGS_insert_only_single_writer &&
+                       !has_write_ && has_insert_ && !this->readSet_.empty();
+
     this->graph_.emplace(this->txid_, TxNode(this->txid_));
     this->graph_.at(this->txid_).status_ = TransactionStatus::validating;
 
@@ -403,6 +407,15 @@ bool TxExecutor::validation() {
       goto FINISH_VALIDATION;
     }
 
+    // Single-writer rule: with reads from one writer L only, the transaction can
+    // be serialized right after L. Mixed writers abort.
+    if (insert_only && !read_set_single_writer()) {
+        InsertOnlyMixedAborts.fetch_add(1, std::memory_order_relaxed);
+        if (this->status_ != TransactionStatus::invalid)
+            this->status_ = TransactionStatus::aborted;
+        goto ABORT_VALIDATION;
+    }
+
     for (auto& we : this->write_set_) {
         if (we.op_ == OpType::INSERT) {
             if (!insert_validation(we))
@@ -416,6 +429,15 @@ bool TxExecutor::validation() {
             this->status_ = TransactionStatus::invalid;
             goto FINISH_VALIDATION;
         }
+    }
+
+    if (insert_only) {
+        if (!scan_conflict_found_) {
+            InsertOnlySkips.fetch_add(1, std::memory_order_relaxed);
+            goto FINISH_VALIDATION;
+        }
+        // A scanner may depend on the inserts; its edges need the full check.
+        InsertOnlyScanFalls.fetch_add(1, std::memory_order_relaxed);
     }
 
     // This transaction's own reads, from the rows it holds.
@@ -691,6 +713,7 @@ bool TxExecutor::insert_validation(WriteElement<Tuple> element) {
     entry = ScanHistory[history_offset].load(std::memory_order_acquire);
     while (entry && entry->txid_.epoch == this->txid_.epoch) {
         if (entry->txid_ != txid_ && entry->contains(element.key_)) {
+            scan_conflict_found_ = true;
             // add edge; scanner to inserter
             if (auto it = this->graph_.find(entry->txid_); it == this->graph_.end())
                 this->graph_.emplace(entry->txid_, TxNode(entry->txid_));
