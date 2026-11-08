@@ -1,6 +1,6 @@
 #!/bin/bash
-# Sec. V-D: the randomized census, 5,000 random schedules of 3 transactions on
-# 4 keys, one per process, each on Oze's record graphs and on Saros.
+# The randomized census: 5,000 random schedules of 3 transactions on 4 keys, one per process, each on
+# Oze's record graphs and on Saros.
 source "$(dirname "$0")/common.sh"
 D=$OUT/census; mkdir -p $D
 for seed in $(seq ${FIRST:-1000} ${LAST:-5999}); do
