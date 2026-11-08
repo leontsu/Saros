@@ -7,15 +7,14 @@
 #include "common/cache_line_size.hh"
 #include "transaction_status.hh"
 
-// A worker's participation in the epoch protocol (see ThreadManagementEntry).
+// A worker's participation in the epoch protocol.
 enum class ParticipationState : uint8_t {
   Active = 0,
   Entering = 1,
   Quiescent = 2,
 };
 
-// Serializes membership changes with the scanners (get_min_epoch(),
-// chkEpochLoaded()); the mutex gives each scan a synchronizes-with edge.
+// Serializes membership changes with the scanners (get_min_epoch(), chkEpochLoaded()).
 inline std::mutex EpochMembershipWriterMutex;
 
 class EpochMembershipChange {
@@ -28,16 +27,14 @@ class EpochMembershipChange {
   std::unique_lock<std::mutex> lock_;
 };
 
-// One worker's epoch stamp and participation state (one cache line). A worker
-// that waits for a request leaves the epoch set (Quiescent), so that it does
-// not hold back the global epoch and every reclamation floor; it rejoins
-// through Entering before it begins a transaction.
-//
-//   Active     may hold protected state; counted by get_min_epoch() and
-//              chkEpochLoaded().
-//   Entering   rejoining, stamp not yet refreshed, holds nothing; counted only
-//              by chkEpochLoaded(), so the epoch cannot advance meanwhile.
-//   Quiescent  waiting, holds nothing; counted by neither.
+/**
+ * @brief One worker's epoch stamp and participation state, in one cache line.
+ * 
+ * Active: may hold protected state; counted by get_min_epoch() and chkEpochLoaded().
+ * Entering: rejoining, stamp not yet refreshed; counted only by chkEpochLoaded().
+ * Quiescent: waiting for a request, holds nothing; counted by neither, so that it does not
+ * hold back the global epoch and every reclamation floor.
+ */
 class ThreadManagementEntry {
   public:
   explicit ThreadManagementEntry(uint64_t epoch) {

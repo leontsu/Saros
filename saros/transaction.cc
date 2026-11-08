@@ -17,11 +17,10 @@ extern std::vector<Result> OzeResult;
 using namespace std;
 
 /**
- * @brief Starts a transaction (also used to restart one after an abort).
- *
- * The thread registers at the global epoch, but the transaction is labeled
- * with the minimum epoch over active workers, and its reclamation floor is
- * one below that minimum.
+ * @brief Starts a transaction, or restarts one after an abort.
+ * 
+ * The thread registers at the global epoch, but the transaction is labeled with the minimum
+ * epoch over active workers, and its reclamation floor is one below that minimum.
  */
 void TxExecutor::begin() {
     if (l1d_on()) { l1d_t0_ = rdtscp(); l1d_val_ = 0; l1d_facts_ = 0; l1d_trav_ = 0; l1d_reads_ = 0; l1d_imp_ = 0; l1d_fp_ = 0; l1d_hist_ = 0; }
@@ -48,8 +47,7 @@ void TxExecutor::begin() {
     }
     this->txid_.epoch = label;
     this->reclamation_epoch_ = e - 1;
-    // The registries take the minimum announced floor over live transactions;
-    // get_min_epoch() alone can move past an older live transaction's floor.
+    // The registries take the minimum announced floor over live transactions.
     ReclamationFloorAnnouncer::announce(this->thid_, this->reclamation_epoch_);
 
     // reset the flags for insert-only transactions
@@ -61,10 +59,6 @@ void TxExecutor::begin() {
     this->is_forwarded_ = false;
 }
 
-/**
- * @brief Transaction read function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
     Status ret = Status::OK;
     Tuple *tuple;
@@ -110,8 +104,16 @@ ABORT_READ:
     return Status::WARN_NOT_FOUND;
 }
 
-// Chooses the version to read in the record graph (Oze's read) and records
-// the read there; Saros also appends the read fact to the record's history.
+/**
+ * @brief Chooses a version under the record latch and records the read; Saros also publishes it.
+ * 
+ * Publication at read time keeps a read visible to later writers even if validation skips it.
+ * @param s The table.
+ * @param key The key.
+ * @param tuple The record.
+ * @param return_ver Receives the version read.
+ * @return OK, WARN_NOT_FOUND for a deleted row, or an error that aborts the transaction.
+ */
 Status TxExecutor::read_internal(Storage s, std::string_view key, Tuple* tuple, Version** return_ver) {
     TxID target;
     Version *ver = nullptr;
@@ -142,8 +144,8 @@ Status TxExecutor::read_internal(Storage s, std::string_view key, Tuple* tuple, 
       tuple->graph_.at(this->txid_).readSet_.emplace(row_key(tuple), target);
       tuple->graph_.at(this->txid_).from_.emplace(target);
       if (FLAGS_saros) {
-        // The row was deleted between the index lookup and the latch: its
-        // history is closed, so the read cannot be published. Abort.
+        // The row was deleted after the index lookup: its history is closed, so the read cannot
+        // be published.
         if (row_detached(tuple)) {
             if (this->status_ != TransactionStatus::invalid) {
                 this->status_ = TransactionStatus::aborted;
@@ -170,10 +172,6 @@ OUT:
     return stat;
 }
 
-/**
- * @brief Transaction write function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::write(Storage s, std::string_view key, TupleBody&& body) {
     Status ret = Status::OK;
     Tuple *tuple;
@@ -203,10 +201,6 @@ FINISH_WRITE:
   return ret;
 }
 
-/**
- * @brief Transaction insert function.
- * @param [in] key The key of key-value
- */
 Status TxExecutor::insert(Storage s, std::string_view key, TupleBody&& body) {
     if (searchWriteSet(s, key)) return Status::WARN_ALREADY_EXISTS;
 
@@ -323,11 +317,14 @@ Status TxExecutor::scan(const Storage s,
 }
 
 /**
- * @brief Validation (serial).
- *
- * Validates every write, then every record read but not written, then the
- * propagation targets discovered on the way, record by record. Saros imports
- * histories into the working graph; Oze merges record graphs.
+ * @brief Validates the transaction record by record; true means it may commit.
+ * 
+ * An insert-only transaction that read from one writer L only skips its read validation (the
+ * single-writer rule): it has only wr edges from L and rw edges to writers newer than L, so it
+ * can be serialized right after L, and its reads were already published. Mixed writers abort;
+ * a scan covering its inserts sends it to full validation. Everything else validates its writes,
+ * its reads and the targets discovered on the way.
+ * @return False if the transaction must abort. status_ becomes invalid when the run ends.
  */
 bool TxExecutor::validation() {
     // Saros: register the read set once, in the footprint registry.
@@ -349,8 +346,7 @@ bool TxExecutor::validation() {
     this->graph_.emplace(this->txid_, TxNode(this->txid_));
     this->graph_.at(this->txid_).status_ = TransactionStatus::validating;
 
-    // Read-only: Oze's read-only path validates each record read, without
-    // discovery, including rows deleted since (Saros imports them by identity).
+    // Read-only: each record read is validated, without discovery, including rows deleted since.
     if (this->writeSet_.size() == 0) {
         KeySet crown_rows;
         for (const auto& re : this->read_set_) crown_rows.insert(re.rcdptr_);
@@ -395,8 +391,8 @@ bool TxExecutor::validation() {
         goto FINISH_VALIDATION;
     }
 
-    // Insert-only: Oze checks only scanner -> inserter conflicts; with
-    // --validate_insert_only_reads, only for transactions that read nothing.
+    // Insert-only without reads: only scanner -> inserter conflicts; without
+    // --validate_insert_only_reads, also with reads.
     if (!has_write_ && has_insert_ &&
         (this->readSet_.empty() || !FLAGS_validate_insert_only_reads)) {
       for (auto& we : this->write_set_) {
@@ -446,8 +442,7 @@ bool TxExecutor::validation() {
             propagate_set.insert(re.rcdptr_);
     }
 
-    // read_validation() returns early with targets left only when the run
-    // ends; it then sets status_ to invalid and the transaction is abandoned.
+    // read_validation() returns early with targets left only when the run ends, with status_ invalid.
     if (!read_validation(propagate_set, finished_set)) {
         goto ABORT_VALIDATION;
     }
@@ -463,20 +458,22 @@ ABORT_VALIDATION:
 
 /**
  * @brief Validates one written record.
- *
- * Adds an edge from every reader of the record to this transaction; on a
- * cycle, order forwarding instead places the new version before the writers
- * of the versions those readers read. Saros imports the record's history,
- * publishes the edges and a prefix reference to the previously validated
- * record, and runs discovery; Oze merges and copies its read and write sets
- * into the record graph.
+ * 
+ * Adds an edge from every reader of the record to this transaction; on a cycle, order forwarding
+ * places the new version before the writers of the versions those readers read. Saros imports the
+ * history, publishes the edges and a prefix reference to the previous record, and runs discovery;
+ * Oze merges and copies its read and write sets into the record graph.
+ * @param element The write.
+ * @param finished_set Records already validated.
+ * @param propagate_set Receives the targets discovered.
+ * @return False if the transaction must abort.
  */
 bool TxExecutor::write_validation(WriteElement<Tuple> element, KeySet& finished_set, KeySet& propagate_set) {
     Status stat;
     TxSet decided, reachable_to;
     TxSet readers;
     TxSet followers;
-    // Saros: `followers` before insert_version() consumes it, for publication.
+    // `followers` before insert_version() consumes it, for publication.
     TxSet forwarded_followers;
     bool forwarded = false;
     KeySet followers_read_keys;
@@ -569,8 +566,7 @@ bool TxExecutor::write_validation(WriteElement<Tuple> element, KeySet& finished_
             goto ABORT_VALIDATION;
         }
 
-        // Reads still add to the record graph; prune it as Oze does, skipping
-        // gc() while the floor has not advanced since its last run here.
+        // Reads still add to the record graph; prune it as Oze does, skipping gc() at an unchanged floor.
         if (!tuple->graph_gc_ran_ || this->reclamation_epoch_ > tuple->graph_gc_epoch_) {
             gc(tuple->graph_, this->reclamation_epoch_);
             tuple->graph_gc_epoch_ = this->reclamation_epoch_;
@@ -642,8 +638,7 @@ bool TxExecutor::write_validation(WriteElement<Tuple> element, KeySet& finished_
         goto ABORT_VALIDATION;
     }
 
-    // Propagation targets: the records read by transactions reachable from
-    // this one (Oze's discovery, unchanged).
+    // Propagation targets: the records read by transactions reachable from this one.
     find_reachable_to(this->txid_, tuple->graph_, reachable_to);
     for (auto& txid : reachable_to) {
         add_related_read_keys(&tuple->graph_.at(txid), followers_read_keys);
@@ -676,9 +671,11 @@ ABORT_VALIDATION:
 
 /**
  * @brief Validates one inserted record against the scans of this epoch.
- *
- * A scan whose range contains the new key gets a scanner -> inserter edge
- * (published by Saros). Scan entries below the reclamation floor are freed.
+ * 
+ * A scan whose range contains the new key gets a scanner -> inserter edge, published by Saros,
+ * and sends an insert-only transaction to full validation.
+ * @param element The insert.
+ * @return False if the edge closes a cycle.
  */
 bool TxExecutor::insert_validation(WriteElement<Tuple> element) {
     Tuple* tuple = element.rcdptr_;
@@ -690,8 +687,7 @@ bool TxExecutor::insert_validation(WriteElement<Tuple> element) {
     tuple->lock_.w_lock();
 
     if (FLAGS_saros) {
-        // Reference chain, as in write_validation(), whether or not a scanner
-        // conflict is found below.
+        // The reference chain continues whether or not a scanner conflict is found.
         if (last_published_tuple_ != nullptr && last_published_tuple_ != tuple) {
             if (auto it = published_seq_.find(last_published_tuple_); it != published_seq_.end()) {
                 append_include(tuple, last_published_tuple_, it->second);
@@ -766,13 +762,14 @@ OUT:
 }
 
 /**
- * @brief Validates the records in target_set until none is left.
- *
- * Saros imports each record's history, checks for a cycle, cites the
- * previously validated record and runs discovery, which may add targets.
- * A transaction that inserts without updating (or, with
- * --short_discovery_limit, read fewer records than the limit) is aborted once
- * its targets exceed the discovery limit. Oze merges record graphs instead.
+ * @brief Validates the records in target_set until none is left; discovery may add targets.
+ * 
+ * Saros imports each history, checks for a cycle, cites the previous record and runs discovery.
+ * An insert-only transaction (with --short_discovery_limit, any that read fewer records) is aborted
+ * and retried once its targets exceed the limit. Oze merges record graphs instead.
+ * @param target_set The records left to validate.
+ * @param finished_set Records already validated.
+ * @return False if the transaction must abort.
  */
 bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
     while (!target_set.empty()) {
@@ -782,7 +779,7 @@ bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
         tuple->lock_.w_lock();
 
         if (FLAGS_saros) {
-            // A row deleted since: its history is imported by identity.
+            // A row deleted since is imported by identity.
             const uint64_t upto_seq = row_committed_seq(tuple);
             if (!import_record(tuple, upto_seq, this->graph_)) {
                 tuple->lock_.w_unlock();
@@ -882,13 +879,12 @@ ABORT_VALIDATION:
 }
 
 /**
- * @brief Aborts the transaction and clears its local state.
+ * @brief Aborts the transaction: its published facts stop counting, and its local state is cleared.
  */
 void TxExecutor::abort() {
 
     if (FLAGS_saros) {
-        // Facts this transaction published must stop counting: append an abort
-        // mark to every history it appended to.
+        // Append an abort mark to every history this transaction appended to.
         std::vector<Tuple*> published_tuples;
         published_tuples.reserve(published_seq_.size());
         for (const auto& [tuple, _] : published_seq_) {
@@ -936,10 +932,9 @@ void TxExecutor::mainte() {
   reclaim_retired_chunks();
 }
 
-// Reclaims detached record graph states. RecordGraphRegistry::reclaim() first
-// advances a state's slot generation (making every RecordId of it stale) only
-// once no pin is held and every citation of it is retirable by every live and
-// future transaction, then frees it one epoch later.
+/**
+ * @brief Periodic pass that frees detached histories, bounded by the floor of future transactions.
+ */
 void TxExecutor::reclaim_record_graph_states() {
   const uint64_t interval = std::max<uint64_t>(1, FLAGS_reclaim_interval);
   if (++state_reclaim_tick_ < interval) return;
@@ -951,9 +946,7 @@ void TxExecutor::reclaim_record_graph_states() {
       atomicLoadGE(), min_future_floor, kReclaimBudget);
 }
 
-// Frees retired rows. The floor is min(announced live minimum,
-// get_min_epoch() - 1): the first term bounds live transactions with an older
-// floor, the second transactions that have not begun.
+// Frees retired rows at the floor min(announced live minimum, get_min_epoch() - 1).
 void TxExecutor::reclaim_retired_rows() {
   const uint64_t interval = std::max<uint64_t>(1, FLAGS_reclaim_interval);
   if (++row_reclaim_tick_ < interval) return;
@@ -965,7 +958,7 @@ void TxExecutor::reclaim_retired_rows() {
   RowRetirementRegistry::instance().reclaim(live_floor, kReclaimBudget);
 }
 
-// Frees retired (aborted update or delete) versions, with the row floor.
+// Frees retired versions of aborted updates and deletes, at the same floor.
 void TxExecutor::reclaim_retired_versions() {
   const uint64_t interval = std::max<uint64_t>(1, FLAGS_reclaim_interval);
   if (++version_reclaim_tick_ < interval) return;
@@ -977,9 +970,12 @@ void TxExecutor::reclaim_retired_versions() {
   VersionRetirementRegistry::instance().reclaim(live_floor, kReclaimBudget);
 }
 
-// Frees the history chunks and chunk directories unlinked by retirement
-// (--free_retired_history_chunks), with the row floor: an entry is freed only
-// once the floor is strictly above its tag (see ChunkRetirementRegistry).
+/**
+ * @brief Periodic pass that frees unlinked history chunks and superseded directories.
+ * 
+ * The floor is min(announced live minimum, get_min_epoch() - 1); an entry is freed only once
+ * the floor is strictly above its tag.
+ */
 void TxExecutor::reclaim_retired_chunks() {
   if (!FLAGS_free_retired_history_chunks) return;
   const uint64_t interval = std::max<uint64_t>(1, FLAGS_reclaim_interval);
@@ -993,13 +989,18 @@ void TxExecutor::reclaim_retired_chunks() {
       live_floor, FLAGS_free_retired_history_chunks_budget);
 }
 
-// The tag of an unlinked chunk or superseded chunk directory, read after the
-// unlinking stores.
+/**
+ * @brief The epoch tag of an unlinked chunk or superseded directory, read after the unlinking stores.
+ * @return The global epoch.
+ */
 uint64_t history_chunk_retire_tag() {
   std::atomic_thread_fence(std::memory_order_seq_cst);
   return atomicLoadGE();
 }
 
+/**
+ * @brief Commits the transaction's versions and clears its local state; validation has passed.
+ */
 void TxExecutor::writePhase() {
     for (auto we : write_set_) {
         commit_version(we);
@@ -1025,6 +1026,10 @@ void TxExecutor::writePhase() {
     transaction_open_ = false;
 }
 
+/**
+ * @brief Validates and, on success, installs the transaction.
+ * @return False if it must abort or was abandoned at the end of the run; the caller then calls abort().
+ */
 bool TxExecutor::commit() {
   const uint64_t l1d_v0 = l1d_on() ? rdtscp() : 0;
   if (l1d_on()) l1d_reads_ = this->readSet_.size();
@@ -1033,7 +1038,7 @@ bool TxExecutor::commit() {
   }
   if (l1d_on()) l1d_val_ += rdtscp() - l1d_v0;
 
-  // Abandon ongoing long transaction when time up
+  // Abandon a long transaction when the run ends.
   if (status_ == TransactionStatus::invalid)
     return false;
 
@@ -1049,9 +1054,8 @@ bool TxExecutor::commit() {
   return true;
 }
 
-// Reconnoitering (BoMB target selection as if from a cache): reads choose
-// versions without recording anything; reconnoiter_end() restarts the
-// transaction.
+// Reconnoitering (BoMB's target selection, as if from a cache): reads choose versions
+// without recording anything; reconnoiter_end() restarts the transaction.
 void TxExecutor::reconnoiter_begin() {
     if (status_ != TransactionStatus::inflight) {
       begin();

@@ -16,11 +16,8 @@
 #include "result.hh"
 #include "transaction.hh"
 
-// --retention_sample_path: one TSV line per sample of process memory, record
-// states, history chunks and the reclamation floor. The load-phase sample is
-// taken before the workers start, run-phase samples every
-// --retention_sample_interval_s seconds from a thread of their own, and a last
-// one after the workers have joined. Each line is flushed when written.
+// --retention_sample_path: one flushed TSV line per sample of process memory, record states,
+// history chunks and the reclamation floor, from a thread of its own.
 class RetentionSampler {
 public:
   explicit RetentionSampler(const std::string& path) : path_(path) {
@@ -105,8 +102,7 @@ public:
         per_tx[t] += OzeResult[i].local_commit_counts_per_tx_[id];
       }
     }
-    // The floor the reclamation passes compute: the oldest live transaction
-    // or one below the oldest participating worker epoch.
+    // The floor the reclamation passes compute.
     uint64_t min_epoch = std::numeric_limits<uint64_t>::max();
     for (unsigned int i = 0; i < TotalThreadNum; ++i) {
       if (!ThManagementTable[i]->countsTowardMinEpoch()) continue;

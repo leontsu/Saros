@@ -23,8 +23,7 @@ void init(int32_t table_num) {
     exit(0);
   }
 
-  // Prepare two (even/odd) scan histories for each table
-  // offset = 2 * storage_index + epoch % 2
+  // Two (even/odd) scan histories per table: offset = 2 * storage_index + epoch % 2.
   if (posix_memalign((void **) &ScanHistory, CACHE_LINE_SIZE,
                      table_num * 2 * sizeof(atomic<ScanEntry*>)) != 0)
     ERR;
@@ -71,9 +70,8 @@ void displayParameter() {
   cout << "#FLAGS_import_skip_retirable:\t" << FLAGS_import_skip_retirable << endl;
 }
 
-// True when every slot that counts has observed the current epoch. QUIESCENT
-// slots are skipped; ENTERING slots count, so the epoch cannot advance under a
-// worker that is rejoining.
+// True when every slot that counts has observed the epoch. Quiescent slots are skipped; Entering
+// slots count, so the epoch cannot advance under a worker that is rejoining.
 bool chkEpochLoaded() {
   std::lock_guard<std::mutex> membership_lock(EpochMembershipWriterMutex);
   const uint64_t nowepo = atomicLoadGE();

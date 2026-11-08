@@ -26,13 +26,11 @@
 DECLARE_bool(free_retired_history_chunks);
 
 class Tuple;
-// A propagation target: a row that validation latches, so a pointer. A KeySet
-// never outlives the transaction that built it.
+// A propagation target: a row that validation latches. A KeySet never outlives its transaction.
 typedef Tuple* Key;
 
-// How the read and write sets of a graph node name a row: the row's RecordId
-// bits. Nodes can outlive their rows, and a dead row's key then resolves to
-// nullptr rather than to freed memory (row_key / row_key_ptr in tuple.hh).
+// How read and write sets name a row: its RecordId bits. A node can outlive its row,
+// and a dead row's key then resolves to nullptr rather than to freed memory.
 struct RowKey {
     uint64_t bits_ = 0;
 
@@ -60,14 +58,15 @@ typedef std::set<RowKey> WriteSet;
 typedef std::set<Key> KeySet;
 typedef std::set<TxID> TxSet;
 
-// The identity of a record's history (its RecordGraphState): a registry slot
-// and the slot's generation. Every stored reference to a history, such as a
-// prefix reference, is a RecordId rather than a row address: deleting a row
-// detaches its history instead of destroying it, and a reused slot gets a new
-// generation, so an old id never resolves to a new record.
+/**
+ * @brief Identity of a record's history: a registry slot and the slot's generation.
+ * 
+ * Stored references, such as prefix references, use it instead of row addresses:
+ * deleting a row detaches its history, and a reused slot gets a new generation,
+ * so an old identity never resolves to a new record.
+ */
 struct RecordId {
-    // slot_ == 0 is the canonical "no record" value, so a default-constructed
-    // RecordId is falsy and slot indices are 1-based.
+    // slot_ == 0 means "no record"; slot indices are 1-based.
     uint32_t slot_ = 0;
     uint32_t generation_ = 0;
 
@@ -84,8 +83,6 @@ struct RecordId {
     bool operator!=(const RecordId& r) const { return bits() != r.bits(); }
     bool operator<(const RecordId& r) const { return bits() < r.bits(); }
 
-    // Mixing function shared by every RecordId-keyed open-addressed table
-    // below, so they all behave identically.
     static size_t hash(const RecordId& id) {
         uint64_t x = id.bits() + UINT64_C(0x9e3779b97f4a7c15);
         x ^= x >> 30; x *= UINT64_C(0xbf58476d1ce4e5b9);
@@ -98,12 +95,15 @@ struct RecordIdHash {
     size_t operator()(const RecordId& id) const { return RecordId::hash(id); }
 };
 
-// The reclamation floor (reclamation_epoch_) of each thread's live
-// transaction. A transaction keeps the floor it took at begin() while
-// get_min_epoch() moves on, so reclamation must bound by min_live() as well.
+/**
+ * @brief The reclamation floor of each thread's live transaction.
+ * 
+ * A transaction keeps the floor it took at begin() while get_min_epoch() moves on,
+ * so every reclamation pass must also respect min_live().
+ */
 class ReclamationFloorAnnouncer {
 public:
-    // A thread id at or above the bound blocks all reclamation (min_live()).
+    // A thread id at or above this bound blocks all reclamation.
     static constexpr size_t kSlots = 512;
 
     static void announce(size_t thid, uint64_t floor) {
@@ -117,10 +117,11 @@ public:
                             std::memory_order_release);
     }
 
-    // Lower bound on the reclamation floor of every live transaction, or 0
-    // when nothing may be reclaimed.  Returns 0 (block all reclamation) if any
-    // thread id ever exceeded kSlots, so an unexpected thread count degrades
-    // to "retain everything" rather than to an unsound reclamation.
+    /**
+     * @brief Lower bound on the reclamation floor of every live transaction.
+     * @return UINT64_MAX if none is live; 0 if a thread id exceeded kSlots, so that an
+     *         unexpected thread count retains everything instead of reclaiming unsoundly.
+     */
     static uint64_t min_live() {
         if (overflow().load(std::memory_order_acquire)) return 0;
         uint64_t min = std::numeric_limits<uint64_t>::max();
@@ -128,8 +129,6 @@ public:
             const uint64_t v = slots()[i].load(std::memory_order_acquire);
             if (v < min) min = v;
         }
-        // UINT64_MAX if no transaction is live; callers still apply their
-        // own epoch grace.
         return min;
     }
 
@@ -155,11 +154,13 @@ private:
 
 struct RecordGraphState;
 
-// Owns every RecordGraphState. Slots live in chunks that are never freed or
-// moved; only the states are. A slot packs its generation and pin count into
-// one word, gen_pins_ = (generation << 32) | pins, so that "bump the
-// generation only if nobody pins the slot" is one CAS. try_pin() is the only
-// way from a RecordId to a state.
+/**
+ * @brief Owns every history, so that a history can outlive its row.
+ * 
+ * Slots live in chunks that never move. A slot packs its generation and pin count
+ * into one word, so that "bump the generation only if nobody pins the slot" is one
+ * CAS. try_pin() is the only way from a RecordId to a state.
+ */
 class RecordGraphRegistry {
 public:
     // Statistics (monotonic unless noted), read by tests.
@@ -185,8 +186,7 @@ public:
         std::atomic<uint64_t> free_after_grace_len{0};  // length at last pass
     };
 
-    // Totals over all record states, filled by sample_retention(). Byte
-    // counts are computed from sizes and counts, not measured.
+    // Totals over all record states; byte counts come from sizes and counts.
     struct RetentionSample {
         uint64_t states_scanned = 0;      // slots that still resolve
         uint64_t states_with_log = 0;     // committed_seq_ > 0
@@ -199,12 +199,10 @@ public:
         uint64_t dir_bytes = 0;
     };
 
-    // Walks the whole slot table once, pinning each state and reading only its
-    // atomics. O(slots): for a low-frequency sampler only.
+    // O(slots): for a low-frequency sampler only.
     void sample_retention(RetentionSample& out);
 
-    // Never destroyed: the registry owns every state for the process lifetime,
-    // and its storage stays reachable (not a leak) during static destruction.
+    // Never destroyed: its storage stays reachable during static destruction.
     static RecordGraphRegistry& instance() {
         static RecordGraphRegistry* registry = new RecordGraphRegistry();
         return *registry;
@@ -212,24 +210,17 @@ public:
 
     static Counters& counters() { return instance().counters_; }
 
-    // Allocates a state and returns it already owned by `owner`.  The caller
-    // holds the only reference until it publishes the id, so no pin is needed.
+    // A new state owned by `owner`, unpinned: the caller holds the only reference.
     RecordGraphState* create(Tuple* owner);
 
-    // Identity -> pinned state, or nullptr when the id is stale. While pinned,
-    // the state is not freed (its retired chunks are protected by epochs).
     RecordGraphState* try_pin(RecordId id);
     void unpin(RecordId id);
 
     // Identity -> the live row, or nullptr once the row has been deleted.
     Tuple* live_owner(RecordId id);
 
-    // The row is going away. The id stays resolvable for prefix references
-    // until reclaim() finds every reference retirable.
     void detach(RecordGraphState* state, uint64_t epoch);
 
-    // Bounded pass from mainte(); returns the states freed. `min_future_floor`
-    // (get_min_epoch() - 1) bounds the floor of transactions not yet begun.
     size_t reclaim(uint64_t now_epoch, uint64_t min_future_floor,
                    size_t budget = 256);
 
@@ -252,8 +243,7 @@ private:
     struct Slot {
         // (generation << 32) | pins; generations start at 1.
         std::atomic<uint64_t> gen_pins_{UINT64_C(1) << 32};
-        // Written only while the slot is quiescent (before its generation is
-        // published, or after a zero-pin generation bump).
+        // Written only while the slot is quiescent.
         RecordGraphState* state_ = nullptr;
     };
 
@@ -281,8 +271,7 @@ private:
     }
 
     mutable std::mutex mutex_;
-    // Append-only chunk index: entries are written once under mutex_ and read
-    // lock-free; chunk_count_ publishes how many. At most 2^30 records.
+    // Append-only chunk index, read lock-free; chunk_count_ publishes how many.
     static constexpr size_t kMaxSlotChunks = 1u << 18;
     static constexpr size_t kMaxRecordSlots = kMaxSlotChunks * kSlotChunkSlots;
     std::atomic<SlotChunk*>* chunks_ = nullptr;
@@ -302,8 +291,7 @@ enum class GraphEdgeKind : uint8_t {
     WrittenBy,
 };
 
-// An open-addressing map RecordId -> uint64_t that keeps the maximum value set
-// per record.
+// Open-addressing map RecordId -> uint64_t that keeps the maximum value set per record.
 class FlatRecordWatermarks {
 public:
     struct Entry {
@@ -382,7 +370,6 @@ class TxNode {
         TxID id_;
         TransactionStatus status_;
         bool is_aborted;
-        // Oze copies a transaction's read and write sets into the node.
         ReadSet readSet_;
         WriteSet writeSet_;
         TxSet readBy_;     // outgoing edges
@@ -410,7 +397,11 @@ enum class GraphDeltaKind : uint8_t {
     MarkAborted,
 };
 
-// One entry of a record's history.
+/**
+ * @brief One entry of a record's history: a read fact, an edge, an abort mark or a prefix reference.
+ * 
+ * Entries are written once under the record latch and read without a lock.
+ */
 struct GraphDelta {
     uint64_t seq_ = 0;
     GraphDeltaKind kind_ = GraphDeltaKind::EnsureNode;
@@ -434,10 +425,15 @@ struct GraphDelta {
     uint64_t include_seq_ = 0;
 };
 
-// The retirement bound of a history entry: the epoch below the floor of which
-// the entry is retirable. A read fact or edge carries the epoch of its newer
-// endpoint (as Oze's gc() drops an edge only when both endpoints are old); a
-// prefix reference carries the transitive bound of the cited prefix.
+/**
+ * @brief The retirement bound of a history entry.
+ * 
+ * A read fact or edge carries the epoch of its newer endpoint, as gc() drops an edge
+ * only when both endpoints are old; a prefix reference carries the transitive bound
+ * of the cited prefix.
+ * @param delta The entry.
+ * @return The epoch below whose floor the entry is retirable.
+ */
 inline uint64_t delta_retirement_epoch(const GraphDelta& delta) {
     if (delta.kind_ == GraphDeltaKind::IncludeRecord)
         return static_cast<uint64_t>(delta.retire_epoch_);
@@ -455,11 +451,13 @@ static_assert(sizeof(GraphDelta) == 64,
 
 inline constexpr size_t kGraphDeltaChunkSlots = 64;
 
-// A fixed-size block of a history. Chunks never move. They are freed with the
-// history, or, with --free_retired_history_chunks, after retirement: chunks
-// wholly at or below the watermark are unlinked from the front and freed one
-// epoch grace later (ChunkRetirementRegistry), so that a reader that still
-// holds a pointer is protected by its transaction's epoch rather than by a pin.
+/**
+ * @brief A fixed-size block of a history.
+ * 
+ * Chunks never move. They are freed with the history or, once wholly retired and
+ * unlinked, one epoch grace later (ChunkRetirementRegistry); a reader inside one is
+ * protected by its transaction's epoch rather than by a pin.
+ */
 struct GraphDeltaChunk {
     GraphDelta slots_[kGraphDeltaChunkSlots];
     std::atomic<GraphDeltaChunk*> next_{nullptr};
@@ -467,12 +465,12 @@ struct GraphDeltaChunk {
     uint64_t first_seq_ = 0;
 };
 
-// The chunk directory: an append-only index from chunk number to chunk, which
-// doubles when full, so that a reader seeks to its start chunk in O(1).
-// Without freeing, superseded directories stay chained through prev_ until
-// the history is freed. With --free_retired_history_chunks, a new directory
-// starts at the first linked chunk (entries_[0] maps chunk base_) and the
-// superseded one goes to ChunkRetirementRegistry. Writers hold the record latch.
+/**
+ * @brief Append-only index from chunk number to chunk, so that a reader seeks in O(1).
+ * 
+ * It doubles when full. With freeing, a new directory starts at the first linked chunk
+ * and the superseded one is retired; writers hold the record latch.
+ */
 struct GraphChunkDirectory {
     uint32_t capacity_;
     uint32_t base_;
@@ -500,9 +498,8 @@ static_assert(sizeof(GraphChunkDirectory) == 24, "keeps the measured layout");
 
 inline constexpr uint64_t kGraphChunkDirectoryInitialCapacity = 16;
 
-// Bytes of a history's directories, from the current capacity alone (so that
-// no directory is dereferenced). `chained`: superseded directories are still
-// owned (freeing off); otherwise only the current one is.
+// Bytes of a history's directories, from the current capacity alone; `chained`:
+// superseded directories are still owned (freeing off).
 inline uint64_t graph_chunk_directory_bytes(uint32_t log2_capacity, bool chained,
                                             uint64_t* dirs = nullptr) {
     if (log2_capacity == 0) { if (dirs) *dirs = 0; return 0; }
@@ -518,24 +515,18 @@ inline uint64_t graph_chunk_directory_bytes(uint32_t log2_capacity, bool chained
     return n * sizeof(GraphChunkDirectory) + (2 * cap - 16) * entry;
 }
 
-// The epoch tag of a retired chunk or directory: the global epoch, read after
-// the unlinking stores (defined in transaction.cc).
+// The epoch tag of a retired chunk or directory (defined in transaction.cc).
 uint64_t history_chunk_retire_tag();
 
-// Deferred freeing of the history chunks that retirement unlinks
-// (RecordGraphState::unlink_retired_prefix()) and of superseded directories,
-// as VersionRetirementRegistry frees row versions: an entry is tagged with the
-// global epoch t at unlinking and freed once the floor
-// min(min_live(), get_min_epoch() - 1) is above t.
-//
-// Why this is safe: the unlinking transaction's epoch stamp is at most t, so
-// the global epoch cannot pass t + 1 until that worker restamps or leaves the
-// epoch, both after the unlink. A transaction that began at epoch t + 2 or
-// later therefore sees only the new front of the history; one that may still
-// hold a pointer into the unlinked chunks has a floor of at most t and keeps
-// the floor at or below t while it is live. Retired chunks are not modified,
-// so a reader in the middle of one keeps walking forward. Entries are freed in
-// FIFO order, and a pass stops at the first entry that is not yet free.
+/**
+ * @brief Deferred freeing of unlinked history chunks and superseded directories.
+ * 
+ * An entry is tagged with the global epoch t at unlinking and freed once the floor
+ * min(min_live(), get_min_epoch() - 1) is above t. A transaction that began at epoch
+ * t + 2 or later sees only the new front of the history; one that may still hold a
+ * pointer into the unlinked chunks has a floor of at most t while it is live. Retired
+ * chunks are not modified, so a reader inside one keeps walking forward.
+ */
 class ChunkRetirementRegistry {
 public:
     struct Counters {
@@ -549,11 +540,9 @@ public:
         std::atomic<uint64_t> peak_pending_bytes{0};
         std::atomic<uint64_t> peak_pending_entries{0};
         std::atomic<uint64_t> reclaim_passes{0};
-        // A pass that stopped because the oldest entry's tag was not below the
-        // floor (one count per pass, not per entry).
+        // A pass stopped at an entry whose tag is not below the floor.
         std::atomic<uint64_t> blocked_by_floor{0};
         std::atomic<uint64_t> drained_at_shutdown{0};
-        // Reader-side events, both expected to be rare.
         std::atomic<uint64_t> reader_clamps{0};       // for_each_delta raised its start
         std::atomic<uint64_t> fallback_walks{0};      // directory miss -> walk from head_
         std::atomic<uint64_t> cursor_relocations{0};  // retirement cursor relocated from head_
@@ -566,9 +555,12 @@ public:
     }
     static Counters& counters() { return instance().counters_; }
 
-    // `first` heads `count` consecutive chunks (linked through next_) that the
-    // caller has just made unreachable from head_ and from any directory a
-    // reader can consult after its clamp. Called under the record's latch.
+    /**
+     * @brief Queues chunks that the caller has just made unreachable, under the record latch.
+     * @param first First of the consecutive chunks, linked through next_.
+     * @param count Number of chunks.
+     * @param tag Global epoch read after the unlinking stores.
+     */
     void retire_chunks(GraphDeltaChunk* first, uint64_t count, uint64_t tag) {
         if (count == 0) return;
         GraphDeltaChunk* chunk = first;
@@ -681,23 +673,21 @@ private:
     Counters counters_;
 };
 
-// A record's history: an append-only list of entries (GraphDelta) in chunks,
-// owned by RecordGraphRegistry so that it can outlive its row.
-//
-// Sequence numbers are dense and 1-based; committed_seq_ is the number of
-// entries. Writers hold the record latch and publish committed_seq_ with a
-// release store after writing the entry. Readers take no lock: one acquire
-// load of committed_seq_ makes every entry up to it visible, and they never
-// read past it. A reader holds a registry pin on the history.
+/**
+ * @brief A record's history: an append-only list of entries in chunks, owned by RecordGraphRegistry.
+ * 
+ * Sequence numbers are dense and 1-based. Writers hold the record latch and publish
+ * committed_seq_ with a release store; readers take no lock, load committed_seq_ once
+ * and never read past it, under a registry pin.
+ */
 struct RecordGraphState {
     RecordId id_;
     // The live row, or nullptr once the row has been deleted or reinitialized.
     std::atomic<Tuple*> owner_{nullptr};
-    // Maximum epoch of any entry of this history and of any prefix reference
-    // to it; the registry frees a detached history only once the floor is above it.
+    // Maximum epoch of any entry and of any reference to this history; the registry frees
+    // a detached history only once the floor is above it.
     std::atomic<uint64_t> max_cite_epoch_{0};
-    // Maximum retirement bound over this history's entries: the transitive
-    // retirement bound of its whole prefix (what a reference to it inherits).
+    // Maximum retirement bound over the entries: what a reference to this history inherits.
     std::atomic<uint64_t> max_prefix_epoch_{0};
     // Number of prefix references to this history (statistics only).
     std::atomic<uint64_t> cite_count_{0};
@@ -705,8 +695,7 @@ struct RecordGraphState {
     bool detached_ = false;
     // log2 of the current directory's capacity (0 = none), for byte counts.
     std::atomic<uint8_t> dir_log2_cap_{0};
-    // The chunk number head_ names: entries up to first_live_chunk_ * 64 are
-    // retired and may be freed. Advanced under the latch, after head_.
+    // The chunk number head_ names; advanced under the latch, after head_.
     std::atomic<uint32_t> first_live_chunk_{0};
     uint64_t detach_epoch_ = 0;
 
@@ -716,12 +705,10 @@ struct RecordGraphState {
     GraphDeltaChunk* tail_ = nullptr;
     std::atomic<GraphChunkDirectory*> chunk_dir_{nullptr};
     std::atomic<uint64_t> include_depth_hint_{0};
-    // The retirement watermark: entries up to it are retired and skipped by
-    // readers. Advanced monotonically under the latch.
+    // The retirement watermark: entries up to it are skipped by readers. Grows under the latch.
     std::atomic<uint64_t> retired_seq_{0};
 
-    // Where the next retirement pass resumes (the next sequence to examine and
-    // its chunk); used only under the latch.
+    // Where the next retirement pass resumes; used only under the latch.
     uint64_t retire_cursor_seq_ = 0;
     GraphDeltaChunk* retire_cursor_chunk_ = nullptr;
 
@@ -730,8 +717,8 @@ struct RecordGraphState {
 
     RecordGraphState() = default;
 
-    // Frees the chunks from head_ and the chained directories; unlinked chunks
-    // and superseded directories belong to ChunkRetirementRegistry.
+    // Frees the chunks from head_ and the chained directories; unlinked ones belong to
+    // ChunkRetirementRegistry.
     ~RecordGraphState() {
         GraphDeltaChunk* chunk = head_.load(std::memory_order_relaxed);
         while (chunk != nullptr) {
@@ -803,8 +790,11 @@ struct RecordGraphState {
         return bytes;
     }
 
-    // Appends `delta`, assigning it the next dense sequence number and
-    // returning that sequence. Callers must hold the owning tuple's write lock.
+    /**
+     * @brief Appends one entry and publishes it to lock-free readers.
+     * @param delta The entry; its sequence number is assigned here.
+     * @return The entry's sequence number.
+     */
     uint64_t append(GraphDelta&& delta) {
         const uint64_t n = committed_seq_.load(std::memory_order_relaxed);
         if (n % kGraphDeltaChunkSlots == 0) {
@@ -825,8 +815,7 @@ struct RecordGraphState {
         return seq;
     }
 
-    // Enters `chunk` (chunk number chunk_index) in the directory, growing it if
-    // needed; called under the latch before committed_seq_ is published.
+    // Enters a chunk in the directory, growing it if needed, before committed_seq_ is published.
     void publish_chunk(uint64_t chunk_index, GraphDeltaChunk* chunk) {
         if (FLAGS_free_retired_history_chunks) {
             publish_chunk_rebased(chunk_index, chunk);
@@ -860,9 +849,14 @@ struct RecordGraphState {
         return static_cast<uint8_t>(__builtin_ctzll(power_of_two));
     }
 
-    // publish_chunk() with freeing: a new directory starts at the first linked
-    // chunk and holds at least twice the linked chunks. The superseded one is
-    // retired after the new one is published, like an unlinked chunk.
+    /**
+     * @brief Enters a chunk in the directory when retired chunks may have been freed.
+     * 
+     * A new directory starts at the first linked chunk and holds at least twice the linked
+     * chunks; the superseded one is retired after the new one is published.
+     * @param chunk_index The chunk's number.
+     * @param chunk The chunk.
+     */
     void publish_chunk_rebased(uint64_t chunk_index, GraphDeltaChunk* chunk) {
         GraphChunkDirectory* dir = chunk_dir_.load(std::memory_order_relaxed);
         if (dir == nullptr || chunk_index < dir->base_ ||
@@ -906,12 +900,14 @@ struct RecordGraphState {
         return dir->entries_[chunk_index - dir->base_].load(std::memory_order_acquire);
     }
 
-    // Unlinks every chunk wholly at or below the watermark `retired`, except the
-    // tail, and hands them to ChunkRetirementRegistry; returns their number.
-    // Called under the latch after retirement. Order: head_, then
-    // first_live_chunk_ (both release), then the tag. Unlinked chunks are not
-    // modified, so a reader inside one keeps walking forward; a reader that
-    // sees the new first_live_chunk_ starts above them (for_each_delta()).
+    /**
+     * @brief Unlinks every chunk wholly at or below the watermark, except the tail, for freeing.
+     * 
+     * Stores head_, then first_live_chunk_ (both release), then reads the tag. Unlinked
+     * chunks are not modified, so a reader inside one keeps walking forward.
+     * @param retired The retirement watermark; the caller holds the record latch.
+     * @return The number of chunks unlinked.
+     */
     uint64_t unlink_retired_prefix(uint64_t retired) {
         const uint64_t committed = committed_seq_.load(std::memory_order_relaxed);
         if (committed == 0) return 0;
@@ -934,8 +930,7 @@ struct RecordGraphState {
         return new_first - first;
     }
 
-    // The chunk holding `seq` (at least head_'s first), by a walk from head_;
-    // nullptr past the last chunk. Used under the latch.
+    // The chunk holding `seq`, by a walk from head_; nullptr past the last chunk.
     GraphDeltaChunk* chunk_containing(uint64_t seq) const {
         GraphDeltaChunk* chunk = head_.load(std::memory_order_acquire);
         while (chunk != nullptr &&
@@ -945,8 +940,7 @@ struct RecordGraphState {
         return chunk;
     }
 
-    // The chunk holding 0-based entry `index`, or nullptr if this reader saw an
-    // older directory (callers then walk the chain).
+    // The chunk holding 0-based entry `index`, or nullptr if this reader saw an older directory.
     GraphDeltaChunk* chunk_for_index(uint64_t index) const {
         const uint64_t chunk_index = index / kGraphDeltaChunkSlots;
         GraphChunkDirectory* dir = chunk_dir_.load(std::memory_order_acquire);
@@ -962,8 +956,12 @@ struct RecordGraphState {
     bool empty() const { return committed() == 0; }
     uint64_t size() const { return committed(); }
 
-    // Calls fn on the entries with start_seq_exclusive < seq_ <= min(upto_seq,
-    // committed()) in order, without a lock, until fn returns false.
+    /**
+     * @brief Visits a range of entries in order, without a lock.
+     * @param start_seq_exclusive Entries after this sequence.
+     * @param upto_seq Entries up to this sequence (at most the committed ones).
+     * @param fn Called per entry; returning false stops the walk.
+     */
     template <typename Fn>
     void for_each_delta(uint64_t start_seq_exclusive, uint64_t upto_seq, Fn&& fn) const {
         if (FLAGS_free_retired_history_chunks) {
@@ -996,15 +994,17 @@ struct RecordGraphState {
         }
     }
 
-    // for_each_delta() when retired chunks may have been unlinked and freed.
-    //
-    // Clamp: first_live_chunk_ is loaded before the directory or head_, and the
-    // start is raised to its first sequence. The skipped entries are all
-    // retired, so the reader could equally have skipped them by reading
-    // retired_seq_ later; a reader that loaded an older value is covered by
-    // the unlink's epoch grace until its transaction ends.
-    // Fallback: on a directory miss, walk from head_ by first_seq_ (raising the
-    // start to head_ if head_ has moved past it). `force_fallback` is for tests.
+    /**
+     * @brief for_each_delta() when retired chunks may have been unlinked and freed.
+     * 
+     * first_live_chunk_ is loaded before the directory or head_, and the start is raised to
+     * its first sequence. The skipped entries are all retired; a reader that loaded an older
+     * value is covered by the unlink's epoch grace until its transaction ends.
+     * @param start_seq_exclusive Entries after this sequence.
+     * @param upto_seq Entries up to this sequence.
+     * @param fn Called per entry; returning false stops the walk.
+     * @param force_fallback Walk from head_ instead of the directory (tests).
+     */
     template <typename Fn>
     void for_each_delta_freeing(uint64_t start_seq_exclusive, uint64_t upto_seq,
                                 Fn&& fn, bool force_fallback) const {
@@ -1060,8 +1060,8 @@ struct RecordGraphState {
 
 using RecordGraphLog = RecordGraphState;
 
-// 160 bytes is a mimalloc size class; one more word would move every history
-// into the 192-byte class.
+// 160 bytes is a mimalloc size class; one more word would move every history into
+// the 192-byte class.
 static_assert(sizeof(RecordGraphState) == 160,
               "RecordGraphState must stay 160 bytes (allocator size class)");
 
@@ -1109,6 +1109,11 @@ inline RecordGraphState* RecordGraphRegistry::create(Tuple* owner) {
     return state;
 }
 
+/**
+ * @brief The only way from an identity to a history; a pinned history is not freed.
+ * @param id The history's identity.
+ * @return The pinned state, or nullptr when the identity is stale.
+ */
 inline RecordGraphState* RecordGraphRegistry::try_pin(RecordId id) {
     if (!id.valid()) return nullptr;
     Slot* slot = slot_for(id.slot_);
@@ -1147,6 +1152,11 @@ inline Tuple* RecordGraphRegistry::live_owner(RecordId id) {
     return owner;
 }
 
+/**
+ * @brief Marks a history as ownerless: it stays resolvable for prefix references until reclaim().
+ * @param state The history.
+ * @param epoch Epoch of the detach.
+ */
 inline void RecordGraphRegistry::detach(RecordGraphState* state,
                                         uint64_t epoch) {
     if (state == nullptr) return;
@@ -1162,6 +1172,16 @@ inline void RecordGraphRegistry::detach(RecordGraphState* state,
     counters_.states_detached.fetch_add(1, std::memory_order_relaxed);
 }
 
+/**
+ * @brief Frees detached histories once no reference can need them.
+ * 
+ * Once every citation is retirable by every live and future transaction, a generation
+ * bump (only with no pin held) makes the identity stale; the state is freed one epoch later.
+ * @param now_epoch The current global epoch.
+ * @param min_future_floor Bounds the floor of transactions not yet begun.
+ * @param budget Maximum detached states examined.
+ * @return The number of states freed.
+ */
 inline size_t RecordGraphRegistry::reclaim(uint64_t now_epoch,
                                           uint64_t min_future_floor,
                                           size_t budget) {
@@ -1181,7 +1201,7 @@ inline size_t RecordGraphRegistry::reclaim(uint64_t now_epoch,
         counters_.free_after_grace_len.store(free_after_grace_.size(),
                                              std::memory_order_relaxed);
 
-        // Step 2: free the states made unresolvable at an earlier epoch.
+        // Free the states made unresolvable at an earlier epoch.
         size_t kept = 0;
         for (size_t i = 0; i < free_after_grace_.size(); ++i) {
             Retired entry = free_after_grace_[i];
@@ -1194,8 +1214,7 @@ inline size_t RecordGraphRegistry::reclaim(uint64_t now_epoch,
         }
         free_after_grace_.resize(kept);
 
-        // Step 1: make a detached state unresolvable once every reference to it
-        // is retirable, by bumping the slot generation while nobody pins it.
+        // Make a detached state unresolvable once every reference to it is retirable.
         size_t scanned = 0;
         kept = 0;
         for (size_t i = 0; i < retire_list_.size(); ++i) {
@@ -1267,8 +1286,7 @@ inline void RecordGraphRegistry::sample_retention(RetentionSample& out) {
             out.deltas_committed += committed;
             out.deltas_retired += retired;
             if (committed > 0) ++out.states_with_log;
-            // Chunks still owned (first live .. tail). first_live_chunk_ may be
-            // newer than committed_seq_; min() keeps the two consistent.
+            // Chunks still owned; first_live_chunk_ may be newer than committed_seq_.
             const uint64_t total_chunks =
                 (committed + kGraphDeltaChunkSlots - 1) / kGraphDeltaChunkSlots;
             const uint64_t first_live = std::min<uint64_t>(
@@ -1288,7 +1306,9 @@ inline void RecordGraphRegistry::sample_retention(RetentionSample& out) {
     }
 }
 
-// A registry pin held for a scope: the history is not freed while it is held.
+/**
+ * @brief A registry pin held for a scope: the history is not freed while it is held.
+ */
 class PinnedRecord {
 public:
     PinnedRecord() = default;

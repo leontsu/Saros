@@ -36,6 +36,12 @@ struct TupleId {
   bool operator<(const TupleId &right) const { return this->obj_ < right.obj_; }
 };
 
+/**
+ * @brief A row: its version chain, the record graph used for version choice, and its history.
+ * 
+ * Oze's record graph stays for reads; Saros's validation uses the history, which is owned by
+ * RecordGraphRegistry and detached when the row is deleted or reinitialized.
+ */
 class Tuple {
 public:
   alignas(CACHE_LINE_SIZE) TupleId tuple_id_;
@@ -43,19 +49,16 @@ public:
   atomic<Version *> latest_;
   TupleBody body_; // only used for index tuple as single version
 
-  // Oze's record graph. Saros also uses it during reads, for the version
-  // choice; validation uses the history instead.
+  // Oze's record graph; Saros uses it only during reads, for the version choice.
   Graph graph_;
 
-  // Saros's history of this record, owned by RecordGraphRegistry. Deleting or
-  // reinitializing the row detaches it (see logically_delete()).
+  // Saros's history of this record, owned by RecordGraphRegistry.
   RecordGraphState* graph_state_ = nullptr;
 
   // Unused; keeps sizeof(Tuple) at the measured 256 bytes.
   alignas(8) unsigned char reserved_[48] = {};
 
-  // The floor of the last gc() of graph_ by Saros's validation, which skips a
-  // gc() at an unchanged floor. Guarded by the latch.
+  // The floor of the last gc() of graph_ by Saros's validation; guarded by the latch.
   uint64_t graph_gc_epoch_ = 0;
   bool graph_gc_ran_ = false;
 
@@ -63,8 +66,7 @@ public:
     graph_state_ = RecordGraphRegistry::instance().create(this);
   }
 
-  // Detaches the history (references may still reach it). Reads nothing else:
-  // the row's versions may already be freed.
+  // Detaches the history; reads nothing else, because the row's versions may already be freed.
   ~Tuple() {
     if (graph_state_ != nullptr) {
       RecordGraphRegistry::instance().detach(graph_state_, 0);
@@ -82,8 +84,7 @@ public:
     return logically_deleted() ? detached_id_ : RecordId();
   }
 
-  // nullptr once the row is logically deleted: its history must then be reached
-  // by identity (detached_graph_id()) under a pin. Load it once per use.
+  // nullptr once the row is logically deleted; load it once per use.
   RecordGraphState* graph_state_ptr() const {
     return __atomic_load_n(&graph_state_, __ATOMIC_ACQUIRE);
   }
@@ -107,8 +108,8 @@ public:
     graph_.~Graph();
     Graph* g = ::new(&graph_) Graph;
     g->emplace(txid, TxNode(txid, TransactionStatus::validating));
-    // A reinitialized row gets a new history and identity. With
-    // --reuse_fresh_graph_state a new row keeps the one Tuple() created.
+    // A reinitialized row gets a new history; with --reuse_fresh_graph_state a new row keeps
+    // the one Tuple() created.
     if (!(fresh && FLAGS_reuse_fresh_graph_state && graph_state_ != nullptr))
       reset_graph_state(txid.epoch);
     graph_gc_epoch_ = 0;
@@ -136,12 +137,14 @@ public:
     graph_gc_ran_ = false;
   }
 
-  // Marks a deleted row and detaches its history, so that identity no longer
-  // resolves to it; RowRetirementRegistry frees the object later.
+  /**
+   * @brief Marks a deleted row and detaches its history, so that identity no longer resolves to the row.
+   * 
+   * RowRetirementRegistry frees the object later; the identity is set before the pointer is cleared.
+   */
   void logically_delete() {
     if (logically_deleted_.exchange(true, std::memory_order_acq_rel)) return;
     if (graph_state_ != nullptr) {
-      // The identity is set before the pointer is cleared (release).
       detached_id_ = graph_state_->id_;
       RecordGraphState* state = graph_state_;
       __atomic_store_n(&graph_state_, static_cast<RecordGraphState*>(nullptr),

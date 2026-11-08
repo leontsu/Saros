@@ -33,13 +33,13 @@
 #include "txid.hh"
 #include "version.hh"
 
-// Deferred freeing of deleted rows (a committed delete or an aborted insert).
-// The row is removed from the index and logically deleted, which detaches its
-// history, so that no transaction can obtain the pointer any more; it is then
-// queued with the global epoch E and freed (with the version it owns) once
-// min(min_live(), get_min_epoch() - 1) > E. A transaction B that still holds
-// the pointer obtained it before the delete, so B's floor is below E and B
-// keeps min_live() below E while it is live.
+/**
+ * @brief Deferred freeing of deleted rows (a committed delete or an aborted insert).
+ * 
+ * The row leaves the index and is logically deleted, so no transaction can obtain the
+ * pointer any more. It is freed once min(min_live(), get_min_epoch() - 1) is above the
+ * epoch of retirement: a transaction that still holds the pointer has a lower floor.
+ */
 class RowRetirementRegistry {
 public:
     struct Counters {
@@ -63,8 +63,7 @@ public:
     }
     static Counters& counters() { return instance().counters_; }
 
-    // `owned_version` (an aborted insert's only version) is freed with the row;
-    // a committed delete passes nullptr.
+    // `owned_version` (an aborted insert's only version) is freed with the row.
     void retire(Tuple* row, Version* owned_version, uint64_t epoch) {
         if (row == nullptr) return;
         row->logically_delete();
@@ -144,12 +143,12 @@ private:
     Counters counters_;
 };
 
-// Deferred freeing of the version of an aborted update or delete, whose row
-// stays live. retire() takes the record latch and unlinks the version from the
-// chain if validation had already installed it; such a version is freed once
-// the floor is above the epoch E of retirement (readers skip aborted versions,
-// so only a transaction live at the unlink can still hold it, and its floor is
-// at most E). A version that was never installed is freed at once.
+/**
+ * @brief Deferred freeing of the version of an aborted update or delete, whose row stays live.
+ * 
+ * retire() unlinks an installed version under the record latch and frees it once the
+ * floor is above the epoch of retirement; a version never installed is freed at once.
+ */
 class VersionRetirementRegistry {
 public:
     struct Counters {
@@ -290,8 +289,7 @@ private:
     Counters counters_;
 };
 
-// Copies the counters of freeing retired history chunks into a Result, once,
-// after the workers have joined and before the shutdown drain.
+// Copies the freeing counters into a Result, after the workers have joined.
 inline void snapshot_history_chunk_counters(Result* result) {
     if (result == nullptr) return;
     auto load = [](const std::atomic<uint64_t>& v) {
@@ -322,9 +320,11 @@ inline void snapshot_history_chunk_counters(Result* result) {
                        load(h.cursor_relocations));
 }
 
-// Saros's read footprints: one copy of each committed transaction's read keys,
-// by TxID, shared by all executors and used by discovery. Sharded; entries more
-// than one epoch below the publisher's floor are swept.
+/**
+ * @brief One copy of each validating transaction's read keys, by TxID, used by discovery.
+ * 
+ * Sharded; entries more than one epoch below the publisher's floor are swept.
+ */
 struct ReadFootprintRegistry {
     using Keys = std::vector<RowKey>;
     static constexpr int kShards = 64;
@@ -368,6 +368,12 @@ struct ReadFootprintRegistry {
     }
 };
 
+/**
+ * @brief Runs one worker's transactions: reads, writes, validation and commit.
+ * 
+ * With --saros, validation imports per-record histories into graph_ and publishes facts
+ * once; otherwise it uses the merge-based record graphs (Tuple::graph_).
+ */
 class TxExecutor {
 public:
     TransactionStatus status_ = TransactionStatus::invalid;
@@ -384,8 +390,8 @@ public:
     Graph graph_;
     // Per record, the history sequence this transaction has imported up to.
     std::unordered_map<RecordId, uint64_t, RecordIdHash> last_imported_seq_;
-    // Per record this transaction appended to: its last sequence there, and the
-    // record's prefix retirement bound at that moment (stamped on later citations).
+    // Per record this transaction appended to: its last sequence there, and the record's
+    // prefix retirement bound at that moment (stamped on later citations).
     std::unordered_map<Tuple*, uint64_t> published_seq_;
     std::unordered_map<Tuple*, uint64_t> published_prefix_epoch_;
     std::set<std::pair<RecordId, uint64_t>> import_visited_;
@@ -395,7 +401,7 @@ public:
     std::vector<PinnedRecord> import_pins_;
     FlatRecordWatermarks import_pinned_;
 
-    // Returns a borrowed state pointer whose pin is owned by import_pins_.
+    // A borrowed state whose pin import_pins_ owns.
     RecordGraphState* pin_for_import(RecordId record) {
         if (!record.valid()) return nullptr;
         if (const uint64_t slot = import_pinned_.get(record); slot != 0) {
@@ -409,8 +415,7 @@ public:
         return state;
     }
 
-    // A deleted row's history is detached: nothing is appended to it any more,
-    // and transactions that read the row before the delete reach it by identity.
+    // A deleted row's history takes no more entries; earlier readers reach it by identity.
     static bool row_detached(const Tuple* t) {
         return t != nullptr && t->graph_state_ptr() == nullptr;
     }
@@ -426,12 +431,11 @@ public:
         import_pinned_ = FlatRecordWatermarks();
     }
 
-    // The record this transaction validated last; the next validated record
-    // cites its history prefix (the reference chain).
+    // The record validated last; the next validated record cites its prefix (reference chain).
     Tuple* last_published_tuple_ = nullptr;
 
-    // History dump (--history_dump_path) for tools/check_history.py. For each
-    // written row: the version below the new one, and the global install order.
+    // History dump (--history_dump_path) for tools/check_history.py: for each written row,
+    // the version below the new one and the global install order.
     struct HistoryWritePred {
         TxID pred;
         uint64_t install_seq;
@@ -456,8 +460,7 @@ public:
     uint64_t l1d_imp_ = 0, l1d_fp_ = 0, l1d_hist_ = 0;
     bool l1d_on() const { return FLAGS_l1_cost_diag && thid_ == 0; }
 
-    // Work of the current validation: histories visited, entries scanned,
-    // footprint keys added. Reset by begin() and at the end of validation().
+    // Work of the current validation, for --l1_cost_diag.
     struct DiagVal {
         uint64_t hist = 0, deltas = 0, fp_keys = 0;
     } diag_;
@@ -496,8 +499,7 @@ public:
         return out;
     }
 
-    // One JSON line per committed transaction, flushed by ~TxExecutor(). Runs
-    // before writePhase() clears read_set_, write_set_ and history_write_pred_.
+    // One JSON line per committed transaction; runs before writePhase() clears the sets.
     void append_history_record() {
         std::ostringstream line;
         line << "{\"txid\":\"" << this->txid_ << "\","
@@ -579,8 +581,6 @@ public:
     void reconnoiter_begin();
     void reconnoiter_end();
 
-    // Epoch quiescence: a worker waiting for a request leaves the epoch set and
-    // withdraws its reclamation floor, unless it still holds protected state.
     bool holds_protected_state() const {
         return !import_pins_.empty() || !read_set_.empty() || !write_set_.empty() ||
                !published_seq_.empty() || !published_prefix_epoch_.empty() ||
@@ -590,7 +590,10 @@ public:
                !import_visited_.empty() || transaction_open_ || reconnoitering_;
     }
 
-    // ACTIVE -> QUIESCENT. Returns true if the transition happened.
+    /**
+     * @brief Leaves the epoch set while waiting for a request, so that an idle worker holds back no epoch or floor.
+     * @return True if the transition happened; false if the worker holds protected state.
+     */
     bool become_quiescent() {
         if (holds_protected_state()) return false;
         EpochMembershipChange membership_change;
@@ -598,22 +601,23 @@ public:
             ParticipationState::Quiescent) {
             return false;
         }
-        // Withdraw the floor before leaving the epoch set, so an observer never
-        // sees the slot out of the epoch set while it still pins nothing.
+        // Withdraw the floor before leaving the epoch set.
         ReclamationFloorAnnouncer::withdraw(thid_);
         ThManagementTable[thid_]->atomicStoreParticipation(
             ParticipationState::Quiescent);
         return true;
     }
 
-    // QUIESCENT -> ENTERING -> ACTIVE. Idempotent.
+    /**
+     * @brief Rejoins the epoch set before a transaction begins (Quiescent, Entering, Active).
+     * 
+     * Entering counts in chkEpochLoaded(), so the global epoch cannot advance while the stamp is stale.
+     */
     void resume_active() {
         ThreadManagementEntry* slot = ThManagementTable[thid_];
         if (slot->atomicLoadParticipation() == ParticipationState::Active) return;
         EpochMembershipChange membership_change;
         if (slot->atomicLoadParticipation() == ParticipationState::Active) return;
-        // (1) ENTERING counts in chkEpochLoaded(), so GlobalEpoch cannot advance
-        //     while the stamp is stale; (2) refresh the stamp; (3) rejoin.
         slot->atomicStoreParticipation(ParticipationState::Entering);
         const uint64_t ge = atomicLoadGE();
         slot->atomicStoreEpoch(ge);
@@ -624,8 +628,7 @@ public:
 
     void leaderWork();
 
-    // Bounded reclamation passes run from mainte(), each every
-    // reclaim_interval calls, with the epoch floor described in transaction.cc.
+    // Bounded reclamation passes run from mainte(), each every reclaim_interval calls.
     void reclaim_record_graph_states();
     uint64_t state_reclaim_tick_ = 0;
     void reclaim_retired_rows();
@@ -639,7 +642,10 @@ public:
         Backoff::backoff(FLAGS_clocks_per_us);
     }
 
-    // True if every version in the read set has the same writer (an empty set counts).
+    /**
+     * @brief The condition of the single-writer insert-only rule.
+     * @return True if every version in the read set has the same writer (an empty set counts).
+     */
     bool read_set_single_writer() {
         auto itr = read_set_.begin();
         if (itr == read_set_.end()) return true;
@@ -658,8 +664,8 @@ public:
         return new Version(this->txid_, std::move(body));
     }
 
-    // --read_set_hash_index: searchReadSet() is answered from an index over
-    // read_set_ (built lazily; positions; first occurrence, like the scan).
+    // --read_set_hash_index: an index over read_set_, built lazily; it keeps the first
+    // occurrence, like the linear scan.
     std::unordered_map<std::string, uint32_t> rs_index_;
     size_t rs_indexed_ = 0;
     static std::string rs_index_key(Storage s, std::string_view key) {
@@ -710,12 +716,19 @@ public:
         return nullptr;
     }
 
-    // Appends one entry to tuple's history; the caller holds tuple's latch.
+    /**
+     * @brief Appends one entry to a record's history and updates the epoch bounds that protect it.
+     * 
+     * The history's bounds change before anyone can cite the new sequence, and this transaction's
+     * citation of the record widens to it.
+     * @param tuple The record; the caller holds its latch.
+     * @param delta The entry.
+     * @return The entry's sequence number, or 0 if the row has been deleted.
+     */
     uint64_t append_delta(Tuple* tuple, GraphDelta delta) {
         RecordGraphState* const row_state = tuple->graph_state_ptr();
         if (row_state == nullptr) return 0;
-        // The registry may free this history once this epoch is below every
-        // live floor; an edge also counts its newer endpoint.
+        // The registry may free this history once this epoch is below every live floor.
         const uint64_t delta_epoch =
             (delta.kind_ == GraphDeltaKind::PublishRead ||
              delta.kind_ == GraphDeltaKind::AddEdge)
@@ -725,7 +738,6 @@ public:
         const uint64_t seq = row_state->append(std::move(delta));
         if (l1d_on()) ++l1d_facts_;
         row_state->observe_cite_epoch(delta_epoch);
-        // Folded into the prefix bound before anyone can cite the new sequence.
         row_state->observe_prefix_epoch(retire_epoch);
         published_seq_.insert_or_assign(tuple, seq);
         published_prefix_epoch_[tuple] =
@@ -733,6 +745,13 @@ public:
         return seq;
     }
 
+    /**
+     * @brief Publishes a read fact at read time, so that a later writer of the record finds the reader.
+     * @param tuple The record; the caller holds its latch.
+     * @param txid The reader.
+     * @param reads_from The writer of the version read.
+     * @return The entry's sequence number.
+     */
     uint64_t append_publish_read(Tuple* tuple, TxID txid, TxID reads_from) {
         GraphDelta delta;
         delta.kind_ = GraphDeltaKind::PublishRead;
@@ -743,6 +762,14 @@ public:
         return append_delta(tuple, std::move(delta));
     }
 
+    /**
+     * @brief Publishes a dependency edge in a record's history.
+     * @param tuple The record; the caller holds its latch.
+     * @param src The edge's source.
+     * @param dst The edge's destination.
+     * @param kind Read-from or anti-dependency.
+     * @return The entry's sequence number.
+     */
     uint64_t append_edge(Tuple* tuple, TxID src, TxID dst, GraphEdgeKind kind) {
         GraphDelta delta;
         delta.kind_ = GraphDeltaKind::AddEdge;
@@ -754,8 +781,11 @@ public:
         return append_delta(tuple, std::move(delta));
     }
 
-    // The retirement bound of a citation of included_tuple's prefix: the max
-    // retirement epoch over the cited prefix (transitive retirement bound).
+    /**
+     * @brief The retirement bound of a reference to a record's prefix: the maximum over the prefix.
+     * @param included_tuple The cited record.
+     * @return The transitive retirement bound.
+     */
     uint64_t citation_reach_epoch(Tuple* included_tuple) const {
         if (included_tuple == nullptr) return this->txid_.epoch;
         uint64_t reach = this->txid_.epoch;
@@ -774,8 +804,16 @@ public:
         return reach;
     }
 
-    // Appends to tuple's history a prefix reference to included_tuple's
-    // history up to included_seq. References name records by stable identity.
+    /**
+     * @brief Publishes a prefix reference instead of copying the facts of another record's history.
+     * 
+     * It names the cited history by stable identity and raises the cited history's bound, so that
+     * the history outlives the citing transaction.
+     * @param tuple The citing record; the caller holds its latch.
+     * @param included_tuple The cited record.
+     * @param included_seq The prefix's last sequence.
+     * @return The entry's sequence number, or 0 if a row is gone.
+     */
     uint64_t append_include(Tuple* tuple, Tuple* included_tuple, uint64_t included_seq) {
         RecordGraphState* const row_state = tuple->graph_state_ptr();
         if (row_state == nullptr) return 0;
@@ -798,7 +836,6 @@ public:
             included_state == nullptr ? RecordId() : included_state->id_;
         delta.include_seq_ = included_seq;
         if (included_tuple != nullptr) {
-            // The cited history must also outlive the citing transaction.
             included_state->observe_cite_epoch(this->txid_.epoch);
             included_state->cite_count_.fetch_add(
                 1, std::memory_order_relaxed);
@@ -818,6 +855,12 @@ public:
         return include_seqno;
     }
 
+    /**
+     * @brief Publishes that a transaction aborted, so that its facts stop counting at this record.
+     * @param tuple The record; the caller holds its latch.
+     * @param txid The aborted transaction.
+     * @return The entry's sequence number.
+     */
     uint64_t append_abort(Tuple* tuple, TxID txid) {
         GraphDelta delta;
         delta.kind_ = GraphDeltaKind::MarkAborted;
@@ -825,8 +868,12 @@ public:
         return append_delta(tuple, std::move(delta));
     }
 
-    // Applies one imported history entry to work_graph. `tuple` is the live
-    // row that owns the history, or nullptr if the row has been deleted.
+    /**
+     * @brief Applies one imported history entry to the working graph.
+     * @param work_graph The graph being reconstructed.
+     * @param tuple The live row that owns the history, or nullptr if the row has been deleted.
+     * @param delta The entry.
+     */
     void apply_delta(Graph &work_graph, Tuple* tuple, const GraphDelta &delta) {
         auto ensure_node = [&](const TxID &txid) -> TxNode& {
             if (auto it = work_graph.find(txid); it != work_graph.end()) {
@@ -840,8 +887,7 @@ public:
             case GraphDeltaKind::PublishRead: {
                 TxNode &node = ensure_node(delta.txid_);
                 TxNode &source = ensure_node(delta.reads_from_txid_);
-                // A deleted row adds no read-set entry (no live transaction can
-                // still read it); the edges below are recorded either way.
+                // A deleted row adds no read-set entry; the edges below are recorded either way.
                 if (tuple != nullptr) {
                     node.readSet_[row_key(tuple)] = delta.reads_from_txid_;
                 }
@@ -900,8 +946,7 @@ public:
         }
     }
 
-    // Memo of RecordId -> live row for one transaction; the only way to turn
-    // an identity into a pointer (a deleted row resolves to nullptr).
+    // Memo of RecordId -> live row for one transaction; a deleted row resolves to nullptr.
     mutable std::vector<Tuple*> resolve_cache_;
     mutable FlatRecordWatermarks resolve_cache_index_;  // RecordId -> slot+1
 
@@ -916,12 +961,12 @@ public:
         return owner;
     }
 
-    // Records already considered by the current discovery: a stamp per record
-    // makes clearing O(1) (stamps start at 1; get() returns 0 when absent).
+    // Records already considered by the current discovery: a stamp per record makes
+    // clearing O(1).
     mutable FlatRecordWatermarks propagation_seen_;
     mutable uint64_t propagation_mark_epoch_ = 1;
 
-    // Returns true the first time this record is seen in the current call.
+    // True the first time this record is seen in the current discovery.
     INLINE bool mark_propagation_record(RecordId record) const {
         if (!record.valid()) return false;
         if (propagation_seen_.get(record) == propagation_mark_epoch_) {
@@ -958,18 +1003,23 @@ public:
         const TxExecutor& tx_;
     };
 
-    // An IncludeRecord whose target the registry has reclaimed: skipped, which is
-    // safe because reclamation requires every citation of it to be retirable.
+    // A reference whose target was reclaimed is skipped: reclamation requires every
+    // citation of it to be retirable.
     void note_unresolved_include() const {
         RecordGraphRegistry::counters().unresolved_include_skips.fetch_add(
             1, std::memory_order_relaxed);
     }
 
-    // Imports the history of `state` up to upto_seq into work_graph, following
-    // prefix references recursively. `state` is pinned by the caller (a live
-    // row owns its state). Entries at or below the retirement watermark are
-    // skipped; with --import_skip_retirable so is the leading run of entries
-    // that retirement would drop at this transaction's floor.
+    /**
+     * @brief Reconstructs a history's facts in the working graph, following prefix references.
+     * 
+     * Entries at or below the watermark are skipped; with --import_skip_retirable so is the
+     * leading run of entries that retirement would drop at this transaction's floor.
+     * @param state The history, pinned by the caller or owned by a live row.
+     * @param upto_seq Import up to this sequence, which gives the validator a stable view.
+     * @param work_graph The graph being reconstructed.
+     * @return False if a nested import failed.
+     */
     bool import_record_recursive_impl(RecordGraphState* state, uint64_t upto_seq,
                                       Graph& work_graph) {
         if (state == nullptr) return false;
@@ -979,8 +1029,7 @@ public:
         const uint64_t target_seq = std::min(upto_seq, state->committed());
         if (imported_upto(record) >= target_seq) return true;
 
-        // Visited (record, cutoff) pairs keep cyclic and diamond-shaped
-        // reference graphs finite.
+        // Visited (record, cutoff) pairs keep cyclic and diamond-shaped reference graphs finite.
         const auto visit_key = std::make_pair(record, target_seq);
         if (!import_visited_.insert(visit_key).second) return true;
 
@@ -1031,9 +1080,15 @@ public:
         return true;
     }
 
-    // Imports tuple's history (and everything it references) up to upto_seq.
-    // A deleted row is reached by identity under a pin; a reclaimed one holds
-    // only retirable facts and imports nothing.
+    /**
+     * @brief Imports a record's history and everything it references, as a merge would have provided.
+     * 
+     * A deleted row is reached by identity under a pin; a reclaimed one holds only retirable facts.
+     * @param tuple The record.
+     * @param upto_seq Import up to this sequence.
+     * @param work_graph The graph being reconstructed.
+     * @return False if the import failed.
+     */
     bool import_record(Tuple* tuple, uint64_t upto_seq, Graph& work_graph) {
         import_visited_.clear();
         import_aborted_.clear();
@@ -1058,28 +1113,22 @@ public:
         return ok;
     }
 
-    // Transaction-local identity caches; cleared with the rest of the
-    // transaction state.
     void reset_identity_caches() {
         release_import_pins();
         clear_resolve_cache();
     }
 
-    // Retirement at one record (caller holds its latch): advances the
-    // watermark retired_seq_ over the leading run of entries whose retirement
-    // bound is strictly below this transaction's floor, reclamation_epoch_ =
-    // get_min_epoch() - 1, and, with --free_retired_history_chunks, unlinks the
-    // chunks that now lie wholly at or below the watermark.
-    //
-    // Such an entry stamps only transactions that finished before every
-    // transaction live when this one began, so no cycle through a live
-    // transaction can use it. For a prefix reference the bound is the maximum
-    // over the referenced prefix (transitive retirement bound). The test is
-    // strict because begin() may label a transaction one epoch below its own
-    // registered stamp. Entries are scanned from a persisted cursor, so a call
-    // that finds nothing new is O(1). The watermark only grows, and an entry
-    // that is retirable for one caller is retirable for every caller live at
-    // that time, so resuming from the cursor never needs to look back.
+    /**
+     * @brief Advances the record's retirement watermark over entries no live transaction can need.
+     * 
+     * An entry whose bound is strictly below this transaction's floor stamps only transactions
+     * that finished before every live one began, so no cycle through a live transaction can use
+     * it. The test is strict because begin() may label a transaction one epoch below its stamp.
+     * A persisted cursor makes a call that finds nothing new O(1). With freeing, wholly retired
+     * chunks are then unlinked.
+     * @param tuple The record; the caller holds its latch.
+     * @return False only for a null record.
+     */
     bool retire_record_graph_log_facts(Tuple* tuple) {
         if (tuple == nullptr) return false;
         RecordGraphLog& log = tuple->graph_log();
@@ -1140,18 +1189,20 @@ public:
         if (new_retired > watermark) {
             log.retired_seq_.store(new_retired, std::memory_order_release);
         }
-        // Checked on every call: a wholly retired tail chunk becomes
-        // unlinkable as soon as an append makes it a non-tail chunk.
+        // A wholly retired tail chunk becomes unlinkable once an append makes it a non-tail chunk.
         if (FLAGS_free_retired_history_chunks) {
             log.unlink_retired_prefix(std::max(new_retired, watermark));
         }
         return true;
     }
 
-    // MaintainRecord: runs retirement once the record's history holds more
-    // than retirement_threshold entries (Saros only). If this
-    // transaction published here, its citation of the record widens to the
-    // whole committed history.
+    /**
+     * @brief Runs retirement once the history exceeds --retirement_threshold entries.
+     * 
+     * If this transaction published here, its citation of the record widens to the whole history.
+     * @param tuple The record; the caller holds its latch.
+     * @return False if retirement failed; the caller aborts.
+     */
     bool maybe_retire_record_history(Tuple* tuple) {
         if (!FLAGS_saros) return true;
         if (tuple == nullptr) return false;
@@ -1179,21 +1230,22 @@ public:
         return true;
     }
 
-    // After importing tuple's history up to imported_seq under its latch,
-    // widens this transaction's citation of tuple to what it imported, so a
-    // later reference covers everything it imported.
+    /**
+     * @brief Widens this transaction's citation of a record to what it imported, so that a later reference covers it.
+     * @param tuple The record; the caller holds its latch.
+     * @param imported_seq The sequence imported up to.
+     */
     void widen_citation_to_imported(Tuple* tuple, uint64_t imported_seq) {
         if (row_detached(tuple)) return;
         auto it = published_seq_.find(tuple);
         if (it == published_seq_.end() || it->second >= imported_seq) return;
-        // The prefix bound below is that of the whole committed history.
         if (imported_seq != tuple->graph_log().committed()) return;
         it->second = imported_seq;
         published_prefix_epoch_[tuple] = tuple->graph_log().prefix_epoch();
     }
 
-    // Abort: an aborted insert's row leaves the index and is retired with its
-    // version; an aborted update or delete unlinks only its new version.
+    // An aborted insert's row leaves the index and is retired with its version; an aborted
+    // update or delete unlinks only its new version.
     void writeSetClean() {
         for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
             (*itr).new_ver_->status_.store(VersionStatus::aborted, std::memory_order_release);
@@ -1262,9 +1314,8 @@ public:
         }
     }
 
-    // Writers of the versions that `readers` read of `key`. Order forwarding
-    // places the new version before them when reader -> writer edges would
-    // close a cycle.
+    // Writers of the versions `readers` read of `key`: order forwarding places the new version
+    // before them when reader -> writer edges would close a cycle.
     void find_followers(const Graph &g, const Key key, TxSet &readers, TxSet &followers) {
         for (const auto& reader : readers) {
             if (auto node = g.find(reader); node != g.end()) {
@@ -1305,8 +1356,7 @@ public:
             txns.insert(id);
     }
 
-    // Walks from `ver` to the newest committed (or deleted) version, collecting
-    // the pending versions it skips in `followers`.
+    // Walks from `ver` to the newest committed or deleted version, collecting the pending ones skipped.
     Version* get_a_version(Version* ver, std::vector<Version*>& followers) {
         while (ver->status_.load(memory_order_acquire) != VersionStatus::committed
             && ver->status_.load(memory_order_acquire) != VersionStatus::deleted) {
@@ -1335,13 +1385,16 @@ public:
         tuple->graph_.at(ver->txid_).readBy_.emplace(this->txid_);
     }
 
-    // Oze's read-time version choice (caller holds the record latch): take the
-    // newest committed version whose read keeps the record graph acyclic,
-    // adding anti-dependency edges to every version skipped. Skipping a
-    // pending version whose writer is more than one epoch older than this
-    // transaction is refused (the follower-epoch guard; a writer's epoch can be
-    // one below the epoch its thread registered, see begin()). Saros also
-    // publishes the edges to the record's history.
+    /**
+     * @brief Chooses the version to read: the newest committed one that keeps the record graph acyclic.
+     * 
+     * Every version skipped gets an anti-dependency edge, which Saros also publishes. The follower-epoch
+     * guard refuses to skip a pending version whose writer is more than one epoch older than this
+     * transaction; one epoch of slack is needed because begin() may label a writer below its stamp.
+     * @param tuple The record; the caller holds its latch.
+     * @param return_ver Receives the version chosen.
+     * @return OK, or the reason no version can be read.
+     */
     Status get_visible_version(Tuple *tuple, Version **return_ver) {
         Status stat = Status::OK;
         Version* ver = nullptr;
@@ -1413,8 +1466,7 @@ OUT:
         return stat;
     }
 
-    // Adds the live row of `record` to keys, once per propagation-mark scope.
-    // A record with no live row has nothing left to validate.
+    // Adds the live row of `record` to keys, once per discovery; a dead row has nothing to validate.
     INLINE void insert_live_target_record(RecordId record, KeySet &keys) {
         if (!mark_propagation_record(record)) return;
         if (Tuple* row = resolve_live_record(record); row != nullptr) {
@@ -1446,9 +1498,15 @@ OUT:
         }
     }
 
-    // Saros discovery: the records read by every transaction reachable from
-    // this one in g, plus (Saros) their read sets from the footprint registry,
-    // become propagation targets unless already queued or validated.
+    /**
+     * @brief Finds the records this transaction must still validate, without copied read sets.
+     * 
+     * The records read by every transaction reachable from this one in the working graph, plus
+     * their read sets from the footprint registry, become targets unless already queued or validated.
+     * @param g The working graph.
+     * @param finished_set Records already validated.
+     * @param targets Receives the new targets.
+     */
     void discover_propagation_targets(const Graph &g, KeySet &finished_set,
                                       KeySet &targets) {
         KeySet keys;
@@ -1496,7 +1554,12 @@ OUT:
         return false;
     }
 
-    // True if a cycle through `start` exists in g.
+    /**
+     * @brief The serializability test of validation and of reads.
+     * @param g The graph.
+     * @param start The transaction checked.
+     * @return True if a cycle through `start` exists; also true when the run is ending.
+     */
     bool has_cycle(const Graph &g, const TxID start) {
         std::map<TxID,bool> seen, finished;
         TxSet edges(g.at(start).readBy_);
@@ -1511,7 +1574,7 @@ OUT:
         return false;
     }
 
-    // Oze's merge of a working graph into a record graph (or back).
+    // Oze's merge of a working graph into a record graph, or back.
     void merge(Graph &target, Graph &source) {
         for (const auto& [tid, sourceTxNode] : source) {
             TxNode *targetTxNode;
@@ -1540,8 +1603,10 @@ OUT:
         }
     }
 
-    // Minimum epoch over the ACTIVE slots (ENTERING and QUIESCENT slots hold no
-    // transaction); the current GlobalEpoch if every slot is idle.
+    /**
+     * @brief The minimum epoch over active workers, which labels new transactions and bounds floors.
+     * @return The minimum, or the global epoch if every worker is idle.
+     */
     uint64_t get_min_epoch() {
         // A mutex, not a pair of atomic loads, to see the latest membership change.
         std::lock_guard<std::mutex> membership_lock(EpochMembershipWriterMutex);
@@ -1566,8 +1631,8 @@ OUT:
         }
     }
 
-    // Oze's record-graph garbage collection: drops edges among transactions of
-    // epoch <= `epoch` and nodes with no edge to or from a newer transaction.
+    // Oze's record-graph garbage collection: drops edges among transactions of epoch <= `epoch`
+    // and nodes with no edge to or from a newer transaction.
     void gc(Graph &g, uint64_t epoch) {
         for (auto it = g.begin(); it != g.end();) {
             auto txid = (*it).first;
@@ -1621,8 +1686,12 @@ OUT:
         }
     }
 
-    // Links the new version into the chain: at the head, or with order
-    // forwarding just below the versions written by `followers`.
+    /**
+     * @brief Links a new pending version into the chain: at the head, or below `followers` with order forwarding.
+     * @param we The write.
+     * @param followers Writers the new version must precede; emptied here.
+     * @return OK, or an error if the record is being deleted.
+     */
     Status insert_version(WriteElement<Tuple> we, TxSet& followers) {
         Tuple* tuple = we.rcdptr_;
         if (we.op_ == OpType::DELETE) {
@@ -1648,8 +1717,8 @@ OUT:
             we.new_ver_->next_ = v;
         }
         if (!FLAGS_history_dump_path.empty()) {
-            // The version below the new one, and a global order of installs:
-            // forwarding can splice a write below an already installed one.
+            // The version below the new one and a global install order: forwarding can splice a write
+            // below an installed one.
             const uint64_t install_seq =
                 HistoryInstallSeq.fetch_add(1, std::memory_order_relaxed);
             history_write_pred_[tuple] = HistoryWritePred{v->txid_, install_seq};
@@ -1657,8 +1726,8 @@ OUT:
         return Status::OK;
     }
 
-    // Marks txid aborted in g and removes its edges. The node stays, so a
-    // later merge from a validator that saw it in flight cannot revive it.
+    // Marks txid aborted in g and removes its edges. The node stays, so that a later merge
+    // from a validator that saw it in flight cannot revive it.
     void clean_up_node_edges(Graph &g, const TxID txid) {
         for (const auto& to : g.at(txid).writtenBy_) {
             if (auto it = g.find(to); it != g.end())
