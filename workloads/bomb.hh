@@ -46,8 +46,6 @@ DEFINE_uint32(bomb_material_per_wip, 3, "Raw materials per leaf work-in-progress
 DEFINE_uint32(bomb_base_product_size_per_factory, 100,
               "Products each factory manufactures (the products one L1 costs).");
 DEFINE_uint32(bomb_mc_update_size, 1, "Materials one S1 updates.");
-DEFINE_uint32(bomb_interactive_us, 0,
-              "Delay in microseconds at each round trip of a transaction (0 = off).");
 #else
 DECLARE_uint32(bomb_mixed_short_rate);
 DECLARE_bool(bomb_mixed_short_rate_tps);
@@ -66,7 +64,6 @@ DECLARE_uint32(bomb_base_tree_size);
 DECLARE_uint32(bomb_material_per_wip);
 DECLARE_uint32(bomb_base_product_size_per_factory);
 DECLARE_uint32(bomb_mc_update_size);
-DECLARE_uint32(bomb_interactive_us);
 #endif
 
 typedef std::chrono::high_resolution_clock::time_point timepoint;
@@ -263,10 +260,6 @@ public:
       return std::chrono::microseconds(60*1000*1000/FLAGS_bomb_mixed_short_rate);
     }
 
-    static void interact() {
-      if (FLAGS_bomb_interactive_us) sleepMicroSec(FLAGS_bomb_interactive_us);
-    }
-
     class TxArgs {
     public:
       uint32_t f_id;
@@ -420,7 +413,6 @@ public:
       pc.pc_product_id = p_id;
       pc.pc_cost = cost;
       Status status = tx.write(Storage::ProductCostMaster, key.view(), TupleBody(key.view(), std::move(obj)));
-      interact();
       return status;
     }
 
@@ -438,7 +430,6 @@ public:
         ItemConstructionMaster::CreateKey(node->i_id_, 0, low.ptr());
         ItemConstructionMaster::CreateKey(node->i_id_ + 1, 0, up.ptr());
         tx.scan(Storage::ItemConstructionMaster, low.view(), false, up.view(), true, result);
-        if (!tx.reconnoitering_) interact();
         if (tx.status_ == TransactionStatus::aborted) return nullptr;
         for (auto& tuple : result) {
           const ItemConstructionMaster& ic = tuple->get_value().cast_to<ItemConstructionMaster>();
@@ -475,7 +466,6 @@ public:
       ProductCostMaster::CreateKey(f_id, 0, low.ptr());
       ProductCostMaster::CreateKey(f_id+1, 0, up.ptr());
       tx.scan(Storage::ProductCostMaster, low.view(), false, up.view(), true, result);
-      interact();
       if (tx.status_ == TransactionStatus::aborted) return;
 
       uint32_t debit = 0;
@@ -486,7 +476,6 @@ public:
         insert_journal_voucher(tx, debit, credit, manufactured_quantity*pm.pc_cost);
         if (tx.status_ == TransactionStatus::aborted) return;
       }
-      interact();
     }
 
     // S1: read-modify-write of material costs.
@@ -506,7 +495,6 @@ public:
         mc.mc_stock_price = old.mc_stock_price + 1.0;
         tx.write(Storage::MaterialCostMaster, key.view(), TupleBody(key.view(), std::move(obj)));
       }
-      interact();
     }
 
     // L1 on a static BoM: cost every cached product from the factory's
@@ -542,7 +530,6 @@ public:
       uint32_t f_id = query.args.f_id;
       std::vector<uint32_t> product_ids;
       Status stat = select_im_by_factory(tx, f_id, product_ids);
-      interact();
       if (stat != Status::OK) return;
       if (product_ids.size() == 0) {
         dump(tx.thid_, "ERROR: No target records.");
@@ -567,7 +554,6 @@ public:
         Status status = update_product_cost_master(tx, f_id, p_id, cost);
         if (status == Status::WARN_NOT_FOUND) {
           status = insert_product_cost_master(tx, f_id, p_id, 0.0);
-          interact();
           if (stat != Status::OK) {
             std::stringstream ss;
             ss << "ERROR: insert product cost master fails " << f_id << " " << p_id;
@@ -689,7 +675,6 @@ public:
 
       uint32_t product_id = select_random(product_ids);
       stat = delete_item_manufacturing_master(tx, query.args.f_id, product_id);
-      interact();
       if (stat != Status::OK) {
         dump(tx.thid_, "delete product fail");
       }
@@ -719,10 +704,8 @@ public:
       auto parent_id = pair.first;
       auto material_id = pair.second;
       Status stat = delete_item_construction_master(tx, parent_id, material_id);
-      interact();
       if (stat != Status::OK) return;
       insert_item_construction_master(tx, parent_id, query.args.m_id, 10.0);
-      interact();
     }
 
     // S5: update the quantity of one of a factory's products.
@@ -739,7 +722,6 @@ public:
 
       uint32_t product_id = select_random(product_ids);
       update_item_manufacturing_master(tx, query.args.f_id, product_id, 10.0);
-      interact();
     }
 
     bool get_material_cost(TxExecutor& tx, uint32_t f_id, uint32_t m_id, double& cost) {

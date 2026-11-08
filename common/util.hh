@@ -29,8 +29,6 @@ extern bool isReady(const std::vector<char> &readys);
 
 extern void sleepMs(size_t ms);
 
-extern void sleepMicroSec(size_t us);
-
 extern void waitForReady(const std::vector<char> &readys);
 
 [[maybe_unused]] inline static bool chkClkSpan(const uint64_t start,
