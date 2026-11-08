@@ -37,11 +37,9 @@ void TxExecutor::begin() {
 
     // just for statistics
     this->is_forwarded_ = false;
-
 }
 
 Status TxExecutor::read(Storage s, std::string_view key, TupleBody** body) {
-
     Status ret = Status::OK;
     Tuple *tuple;
     Version *ver = nullptr;
@@ -125,7 +123,6 @@ OUT:
 }
 
 Status TxExecutor::write(Storage s, std::string_view key, TupleBody&& body) {
-
     Status ret = Status::OK;
     Tuple *tuple;
 
@@ -156,7 +153,6 @@ FINISH_WRITE:
 }
 
 Status TxExecutor::insert(Storage s, std::string_view key, TupleBody&& body) {
-
     if (searchWriteSet(s, key)) return Status::WARN_ALREADY_EXISTS;
 
     Tuple* tuple = Masstrees[get_storage(s)].get_value(key);
@@ -181,7 +177,6 @@ Status TxExecutor::insert(Storage s, std::string_view key, TupleBody&& body) {
 }
 
 Status TxExecutor::delete_record(Storage s, std::string_view key) {
-
   // cancel previous write
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     if ((*itr).storage_ != s) continue;
@@ -235,7 +230,6 @@ Status TxExecutor::scan(const Storage s,
       right_key.size(), r_exclusive, &scan_res, limit);
 
   for (auto &&itr : scan_res) {
-
     // A copy: the latest version may change while we read.
     std::string key(itr->latest_.load(memory_order_acquire)->body_.get_key());
     ReadElement<Tuple>* re = searchReadSet(s, key);
@@ -290,7 +284,6 @@ void TxExecutor::validation_worker(size_t worker_id,
         tuple->graph_.emplace(this->txid_, TxNode(this->txid_));
         tuple->graph_.at(this->txid_).status_ = TransactionStatus::validating;
 
-
         // merge graph
         merge(tuple->graph_, graph);
 
@@ -323,14 +316,12 @@ void TxExecutor::validation_worker(size_t worker_id,
         graph.clear();
         graph.insert(tuple->graph_.begin(), tuple->graph_.end());
 
-
         tuple->lock_.w_unlock();
 
         if (loadAcquire(this->quit_)) {
             result = TransactionStatus::invalid;
             return;
         }
-
     }
     result = TransactionStatus::validating;
     return;
@@ -341,7 +332,6 @@ ABORT_VALIDATION:
 }
 
 bool TxExecutor::validation() {
-
     KeySet finished_set;
     KeySet propagate_set;
 
@@ -467,7 +457,6 @@ bool TxExecutor::validation() {
         }
 
         if (has_cycle(this->graph_, this->txid_)) {
-
             goto ABORT_VALIDATION;
         }
 
@@ -662,7 +651,6 @@ OUT:
 }
 
 bool TxExecutor::read_validation(KeySet& target_set, KeySet& finished_set) {
-
     while (!target_set.empty()) {
         auto iterator = target_set.cbegin();
         Tuple* tuple = *iterator;
@@ -737,7 +725,6 @@ ABORT_VALIDATION:
 }
 
 void TxExecutor::abort() {
-
     writeSetClean();
     read_set_.clear();
 
@@ -763,9 +750,7 @@ void TxExecutor::gc_records() {
 }
 
 void TxExecutor::mainte() {
-
   gc_records();
-
 }
 
 void TxExecutor::writePhase() {

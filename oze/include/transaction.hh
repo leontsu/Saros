@@ -113,9 +113,7 @@ public:
     void gc_records();
 
     void backoff() {
-
         Backoff::backoff(FLAGS_clocks_per_us);
-
     }
 
     // True if every version in the read set has the same writer (an empty set counts).
@@ -274,7 +272,6 @@ public:
         // find transactions that can be visited from start transaction
         std::map<TxID,bool> seen;
         for (const auto& next : g.at(start).readBy_) {
-
             if (auto it = g.find(next); it != g.end())
                 find_reachable_to_dfs(g, seen, next);
         }
@@ -307,7 +304,6 @@ public:
     }
 
     void update_read_from(Tuple* tuple, Version* ver) {
-
         if (auto it = tuple->graph_.find(ver->txid_); it == tuple->graph_.end()) {
             tuple->graph_.emplace(ver->txid_, TxNode(ver->txid_));
         }
@@ -577,7 +573,6 @@ OUT:
     }
 
     void clean_up_node_edges(Graph &g, const TxID txid) {
-
         for (const auto& to : g.at(txid).writtenBy_) {
             if (auto it = g.find(to); it != g.end())
                 g.at(to).from_.erase(txid);

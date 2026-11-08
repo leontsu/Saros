@@ -48,7 +48,6 @@ public:
   Version *ldAcqLatest() { return latest_.load(std::memory_order_acquire); }
 
   void init(TxID txid, TupleBody&& body) {
-
     latest_.store(new Version(), std::memory_order_release);
     (latest_.load(std::memory_order_acquire))
             ->set(txid, VERSION_TERMINATION, VersionStatus::pending);
@@ -61,7 +60,6 @@ public:
 
   // only for initial data preparation
   void init([[maybe_unused]] size_t thid, TupleBody&& body, void* param) {
-
     TxID txid = TxID();
     txid.thid = thid;
     latest_.store(new Version(), std::memory_order_release);
@@ -72,6 +70,5 @@ public:
 
     Graph* g = ::new(&graph_) Graph;
     g->emplace(txid, TxNode(txid, TransactionStatus::validating));
-
   }
 };
