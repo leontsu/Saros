@@ -44,15 +44,15 @@ class RowRetirementRegistry {
 public:
     struct Counters {
         std::atomic<uint64_t> rows_retired{0};        // logically deleted + queued
-        std::atomic<uint64_t> retired_aborted_insert{0}; // via writeSetClean (D1)
-        std::atomic<uint64_t> retired_committed_delete{0}; // via commit_version (D2)
-        std::atomic<uint64_t> unpublished_insert_frees{0}; // insert_record WARN_ALREADY_EXISTS (D3)
+        std::atomic<uint64_t> retired_aborted_insert{0}; // via writeSetClean
+        std::atomic<uint64_t> retired_committed_delete{0}; // via commit_version
+        std::atomic<uint64_t> unpublished_insert_frees{0}; // lost the index insert
         std::atomic<uint64_t> rows_freed{0};
         std::atomic<uint64_t> versions_freed{0};
         std::atomic<uint64_t> reclaim_attempts{0};
         std::atomic<uint64_t> blocked_by_floor{0};
         std::atomic<uint64_t> peak_pending{0};
-        std::atomic<uint64_t> immediate_frees{0};     // deferral disabled
+        std::atomic<uint64_t> immediate_frees{0};
         std::atomic<uint64_t> drained_at_shutdown{0};
         std::atomic<uint64_t> dropped_dead_targets{0};// propagation targets dropped
     };
@@ -160,7 +160,7 @@ public:
         std::atomic<uint64_t> blocked_by_floor{0};
         std::atomic<uint64_t> blocked_by_reference{0};
         std::atomic<uint64_t> peak_pending{0};
-        std::atomic<uint64_t> immediate_frees{0}; // deferral disabled
+        std::atomic<uint64_t> immediate_frees{0};
         std::atomic<uint64_t> drained_at_shutdown{0};
     };
 
