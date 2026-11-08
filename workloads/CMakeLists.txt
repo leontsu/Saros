@@ -15,3 +15,5 @@ endfunction()
 
 add_benchmark(bomb_saros bomb.cc saros)
 add_benchmark(ldbc_saros ldbc.cc saros)
+add_benchmark(bomb_oze bomb.cc oze)
+add_benchmark(ldbc_oze ldbc.cc oze)

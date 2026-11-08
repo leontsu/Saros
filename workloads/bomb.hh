@@ -329,20 +329,26 @@ public:
       std::pair<TxType,timepoint> getRequest(TxExecutor& tx) {
         int queueIndex = tx.thid_ - kL1ThreadNum;
         std::pair<TxType, timepoint> ret;
+#ifdef ENGINE_SAROS
         bool waited = false;
+#endif
         while (!loadAcquire(tx.quit_)) {
           try {
             ret = requestQueues[queueIndex].pop();
             break;
           } catch (std::out_of_range e) {
+#ifdef ENGINE_SAROS
             if (!waited) {
               waited = true;
               tx.become_quiescent();
             }
+#endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(100));
           }
         }
+#ifdef ENGINE_SAROS
         if (waited) tx.resume_active();
+#endif
         return ret;
       }
 
@@ -406,7 +412,9 @@ public:
         tx.reconnoiter_end();
         dump(tx.thid_, "[INFO] BoM cache creation done");
       }
+#ifdef ENGINE_SAROS
       tx.abort();
+#endif
     }
 
     Status update_product_cost_master(TxExecutor& tx, uint32_t f_id, uint32_t p_id, double cost,

@@ -17,6 +17,7 @@
 
 #define GLOBAL_VALUE_DEFINE
 
+#include "include/atomic_tool.hh"
 #include "include/common.hh"
 #include "include/result.hh"
 #include "include/transaction.hh"
@@ -480,7 +481,7 @@ double pct(const std::atomic<uint64_t>* h, double q) {
 int main(int argc, char* argv[]) try {
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
-  gflags::SetUsageMessage("LDBC SNB Q2 workload for Saros and Oze.");
+  gflags::SetUsageMessage("LDBC SNB Q2 workload.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   load_graph();
   init((uint32_t)Storage::Size);
@@ -508,7 +509,11 @@ int main(int argc, char* argv[]) try {
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
     // floor: the lowest reclamation floor announced by a live transaction (-1 if none).
+#ifdef ENGINE_SAROS
     const uint64_t floor = ReclamationFloorAnnouncer::min_live();
+#else
+    const uint64_t floor = std::numeric_limits<uint64_t>::max();
+#endif
     printf("#ldbc_sec\t%zu\tshort=%lu\tlong=%lu\tphase=%d\tge=%lu\tfloor=%ld\n", i,
            (unsigned long)g_sec[i].load(), (unsigned long)g_long_sec[i].load(), g_phase.load(),
            (unsigned long)atomicLoadGE(),
@@ -542,6 +547,7 @@ int main(int argc, char* argv[]) try {
            "\tcandidates=%lu\n", g_lr_start_us / 1e6, g_lr_exec_us / 1e6, g_lr_end_us / 1e6,
            g_lr_end_us ? (g_lr_end_us - g_lr_start_us) / 1e6 : NAN, (unsigned long)g_lr_attempts.load(),
            g_lr_end_us != 0, (unsigned long)g_lr_cand.load());
+#ifdef ENGINE_SAROS
   if (FLAGS_free_retired_history_chunks) {
     auto& c = ChunkRetirementRegistry::counters();
     printf("#ldbc_chunk_free\tchunks_unlinked=%lu\tchunks_freed=%lu\treclaim_passes=%lu\tpending_bytes=%lu"
@@ -549,6 +555,7 @@ int main(int argc, char* argv[]) try {
            (unsigned long)c.reclaim_passes.load(), (unsigned long)c.pending_bytes.load(),
            (unsigned long)c.peak_pending_bytes.load());
   }
+#endif
   for (unsigned int i = 0; i < T; ++i) OzeResult[0].addLocalAllResult(OzeResult[i]);
   OzeResult[0].displayAllResult(FLAGS_clocks_per_us, FLAGS_extime, T);
   return 0;
