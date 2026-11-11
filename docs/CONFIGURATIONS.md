@@ -16,6 +16,10 @@ code. The run scripts in `scripts/` use exactly these command lines;
 | `bomb_sarosOF.exe`, `bomb_ozeOF.exe` (Saros and Oze trees with own factories) | `bomb_saros`, `bomb_oze` | Fig. 5 |
 | none | `build/bin/ldbc_oze` | LDBC Q2 on the standalone Oze engine; never measured (see below) |
 
+The archived BoMB binaries were built from the authors' development trees at
+commits db99ef0c (Saros) and 7ba2be5b (Oze); the Fig. 5 binaries add
+`--bomb_l1_own_factories` (cb659311 and 446120e0).
+
 `bomb_saros` and `ldbc_saros` run Saros by default; `--saros=false` selects
 Oze's merge-based record graphs in the same binary. The paper uses that path
 for its Oze LDBC numbers and for the designated schedules, not for BoMB.
