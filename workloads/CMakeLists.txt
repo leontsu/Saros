@@ -1,4 +1,5 @@
-# Each driver is compiled once per engine; ENGINE_SAROS selects the Saros-only parts.
+# BoMB is compiled once per engine (ENGINE_SAROS selects the Saros-only parts); LDBC only for Saros,
+# whose --saros=false path gives the paper's Oze LDBC numbers.
 function(add_benchmark name source engine)
     add_executable(${name} ${source}
             "${PROJECT_SOURCE_DIR}/common/result.cc"
@@ -16,4 +17,3 @@ endfunction()
 add_benchmark(bomb_saros bomb.cc saros)
 add_benchmark(ldbc_saros ldbc.cc saros)
 add_benchmark(bomb_oze bomb.cc oze)
-add_benchmark(ldbc_oze ldbc.cc oze)

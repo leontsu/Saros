@@ -36,7 +36,7 @@ scan covers its inserts, it validates its reads in full. The counters
 appear in the output of the BoMB binaries. Both engines run the same rule at
 the same place in `validation()`. The rule comes from branch fix-vldb-paper of
 github.com/jnmt/ccbench (see `NOTICE`), and `--insert_only_single_writer=false`
-turns it off, as the paper does for one comparison in Sec. V-D.
+turns it off.
 
 The rule does not depend on the number of L1 threads, but every run here has one
 L1 thread, and this repository makes no claim about several L1s on one factory.

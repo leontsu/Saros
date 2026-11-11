@@ -5,7 +5,6 @@ BUILD=${BUILD:-$ROOT/build}
 BOMB_SAROS=${BOMB_SAROS:-$BUILD/bin/bomb_saros}
 LDBC_SAROS=${LDBC_SAROS:-$BUILD/bin/ldbc_saros}
 BOMB_OZE=${BOMB_OZE:-$BUILD/bin/bomb_oze}
-LDBC_OZE=${LDBC_OZE:-$BUILD/bin/ldbc_oze}
 OUT=${OUT:-$ROOT/runs}
 CLOCKS_PER_US=${CLOCKS_PER_US:-1800}  # TSC MHz of the machine
 MEM=${MEM:-64G}                       # memory cap of every run (no swap)

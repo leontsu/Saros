@@ -26,7 +26,7 @@ Python 3. Set `CLOCKS_PER_US` to the machine's TSC frequency in MHz.
 | Fig. 5, Sec. V-B | `scripts/run_multil1.sh` |
 | Fig. 6a-b, Sec. V-D | `scripts/run_throughput.sh static saros\|oze\|oze32` |
 | Fig. 6c-d, Sec. V-E | `scripts/run_throughput.sh dynamic saros\|oze\|oze32` |
-| Fig. 7, Sec. V-F | `scripts/run_ldbc.sh many` (LDBC SNB SF3) |
+| Fig. 7, Sec. V-F | `scripts/run_ldbc.sh` (LDBC SNB SF3) |
 | Sec. III-G, randomized schedules | `scripts/run_census.sh` |
 
 `docs/CONFIGURATIONS.md` lists every command line. `docs/CORRECTNESS.md`

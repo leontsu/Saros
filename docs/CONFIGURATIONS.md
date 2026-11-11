@@ -14,7 +14,6 @@ code. The run scripts in `scripts/` use exactly these command lines;
 | `bomb_oze_sw.exe` (Oze tree) | `build/bin/bomb_oze` | every BoMB number with Oze |
 | `ldbc_oze_GS.exe` (Saros tree) | `build/bin/ldbc_saros` | LDBC Q2, Saros and Oze (`--saros=false`) |
 | `bomb_sarosOF.exe`, `bomb_ozeOF.exe` (Saros and Oze trees with own factories) | `bomb_saros`, `bomb_oze` | Fig. 5 |
-| none | `build/bin/ldbc_oze` | LDBC Q2 on the standalone Oze engine; never measured (see below) |
 
 The archived BoMB binaries were built from the authors' development trees at
 commits db99ef0c (Saros) and 7ba2be5b (Oze); the Fig. 5 binaries add
@@ -77,12 +76,11 @@ commits, aborts, latency histograms), and the database sizes
 `--bomb_material_size`, `--bomb_tree_num_per_product`, `--bomb_base_tree_size`,
 `--bomb_material_per_wip`, `--bomb_mc_update_size` (the paper uses their
 defaults). Thread 0 runs L1; every other worker serves one request queue.
-Thread 1 advances the global epoch on both engines, between its own requests.
+Thread 1 (`--leader_thid`) advances the global epoch on both engines, between its own requests.
 
 ### LDBC (`workloads/ldbc.cc`)
 
-`--ldbc_path`, `--q2_clients`, `--q2_stmt_delay_us`, `--q2_single`,
-`--q2_all_countries`, `--q2_hub`, `--tf_rate`, `--tf_lr_delay_s`,
+`--ldbc_path`, `--q2_clients`, `--q2_stmt_delay_us`, `--tf_rate`,
 `--ldbc_read_ratio` (default 80). Q2's Countries, path lengths (2-4), hub
 factor (10) and the short transactions' `--ops` (10) are TuskFlow's and fixed
 in the code.
@@ -135,51 +133,19 @@ CPUs: `C78` = 0, 2, ..., 78; `C94` = 0, 2, ..., 94; `C30` = 0, 2, ..., 30.
 
 The paper's Fig. 6 campaigns walked the rate ladder per thread count and
 stopped once the short-transaction throughput changed by less than 5 % or after
-three invalid points; Saros repeated the deciding rates to three runs. The
+three invalid points; Saros repeated the deciding rates to three runs (ten on the dynamic BoM). The
 scripts run the whole ladder (`RATES` and `REPS` select a subset).
 
 ### LDBC
 
 | Paper item | Script | Command line | CPUs |
 |---|---|---|---|
-| Fig. 7, Sec. V-F, Saros | `run_ldbc.sh many saros` | `ldbc_saros SAROS SAROS_OPT CF NORULE --short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | C94 |
-| Fig. 7, Sec. V-F, Oze (what produced the paper's numbers) | `run_ldbc.sh many oze` | `ldbc_saros OZE_IN_SAROS NORULE --short_discovery_limit=1000 <the same workload flags>` | C94 |
-| none | `run_ldbc.sh many oze_standalone` | `ldbc_oze OZE NORULE <the same workload flags>` | C94 |
+| Fig. 7, Sec. V-F, Saros | `run_ldbc.sh saros` | `ldbc_saros SAROS SAROS_OPT CF NORULE --short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | C94 |
+| Fig. 7, Sec. V-F, Oze (what produced the paper's numbers) | `run_ldbc.sh oze` | `ldbc_saros OZE_IN_SAROS NORULE --short_discovery_limit=1000 <the same workload flags>` | C94 |
 
 LDBC transactions insert nothing, so the single-writer rule and the insert-only
 limit have no effect there; `NORULE` matches the measured binaries, which
 predate the rule. `--short_discovery_limit` is read only on the Saros path.
-
-## The LDBC driver on the standalone Oze engine
-
-`ldbc_oze` compiles the same `workloads/ldbc.cc` against `oze/`. **It was never
-measured: every Oze LDBC number in the paper comes from
-`ldbc_saros --saros=false`.** It needed no addition to the Oze engine; the
-driver only includes `atomic_tool.hh` itself, and two outputs are compiled for
-Saros only: the reclamation floor (`floor=-1` on Oze) and the chunk counters.
-
-One 60-second run of each, on the paper's machine:
-
-| Point | Run | Q2/min | short commits | short p99 | peak memory |
-|---|---|---|---|---|---|
-| k = 1, 500 us, 1K/s | `ldbc_saros --saros=false` | 534 | 59,991 | 387 ms | 12.9 GiB |
-| | `ldbc_oze` | 553 | 60,006 | 0.08 ms | 8.7 GiB |
-| k = 16, 500 us, 1K/s | `ldbc_saros --saros=false` | 8,250 | 60,006 | 230 ms | 14.6 GiB |
-| | `ldbc_oze` | 8,164 | 60,007 | 0.73 ms | 10.4 GiB |
-| k = 16, 500 us, 10K/s | `ldbc_saros --saros=false` | 7,241 | 212,224 | 38.7 s | 23.5 GiB |
-| | `ldbc_oze` | 6,657 | 576,734 | 6.5 s | 59.4 GiB |
-| k = 16, one-shot, 1K/s | `ldbc_saros --saros=false` | 29,703 | 60,007 | 244 ms | 16.0 GiB |
-| | `ldbc_oze` | 26,046 | 59,977 | 194 ms | 11.8 GiB |
-
-Q2 throughput agrees within about 4% with round trips at 1K/s and is 8-12% lower
-on `ldbc_oze` at the two heavier points. Short-transaction service does not
-agree, and that cause lies in the measured path, not in Oze: with
-`--reuse_fresh_graph_state=false`, every row leaves a detached history state in
-the registry's list (10.4M rows on SF3), and each reclamation pass walks that
-list under the registry mutex, which stalls the short transactions that run the
-pass. With `ldbc_saros --saros=false --reuse_fresh_graph_state=true` the short p99
-falls to 0.08 ms (k = 1) and 0.65 ms (k = 16) at 1K/s. `ldbc_oze` at 10K/s serves
-nearly the whole load, and its memory then grows to near the 64 GiB cap.
 
 ## Differences between the engines' workload code
 
@@ -195,7 +161,6 @@ transactions, retries and the obsolete-row version of BoMB are the same code.
 | `bomb.hh`, `Query::getRequest()` | a worker that waits for a request leaves the epoch set (`become_quiescent()`) and rejoins before it runs the request (`resume_active()`) | a waiting worker stays in the epoch set and keeps its stamp, so at low load it holds back the global epoch until its next request |
 | `bomb.hh`, `prepare()` | closes the empty transaction `reconnoiter_end()` leaves open (`abort()`), which allows the above | leaves it open |
 | `bomb.cc` | retention sampler (off unless `--retention_sample_path`); after the workers join, it prints the chunk counters and drains the retirement registries | neither |
-| `ldbc.cc` | prints the reclamation floor and the chunk counters | prints `floor=-1`; no chunk counters |
 
 The engines themselves differ beyond the representation in what Saros adds as
 safeguards (`docs/CORRECTNESS.md`): deleted rows and aborted versions are

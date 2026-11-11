@@ -37,12 +37,7 @@ DEFINE_string(ldbc_path, "", "LDBC SNB raw CSV directory (.../graphs/csv/raw/com
 DEFINE_uint64(q2_clients, 1, "Threads that run Q2 back to back (taken from --thread_num).");
 DEFINE_uint64(q2_stmt_delay_us, 0, "Client round trip after each Q2 statement (the search, then each "
               "candidate's update), with the transaction open.");
-DEFINE_bool(q2_all_countries, false, "Every Person 2..4 knows hops from the hub is a candidate, as in "
-            "TuskFlow's original Q2 (no Country).");
-DEFINE_bool(q2_single, false, "Run one Q2, started --tf_lr_delay_s seconds in and retried until it commits.");
-DEFINE_int64(q2_hub, -1, "The source Person of every Q2 is hub number q2_hub (-1 = a random hub per Q2).");
 DEFINE_uint64(tf_rate, 10000, "Short transactions per second (all short threads together).");
-DEFINE_uint64(tf_lr_delay_s, 60, "--q2_single: seconds after start before the Q2 starts.");
 DEFINE_uint64(ldbc_read_ratio, 80, "Percentage of short transactions that are read-only.");
 
 using namespace std;
@@ -238,13 +233,10 @@ void make_db(uint64_t records) {
 }
 
 constexpr int kBuckets = 400;              // 40 per decade, 1 us .. 10^10 us
-// Short transactions by phase: before, during and after the --q2_single Q2.
-std::atomic<uint64_t> g_lat[3][kBuckets];
+std::atomic<uint64_t> g_lat[kBuckets];       // short-transaction latency
 std::atomic<uint64_t> g_long_lat[kBuckets];
 std::atomic<uint64_t> g_sec[4096];         // short commits per second
 std::atomic<uint64_t> g_long_sec[4096];    // Q2 commits per second
-std::atomic<int> g_phase{0};
-std::atomic<uint64_t> g_lr_start_us{0}, g_lr_end_us{0}, g_lr_attempts{0}, g_lr_exec_us{0}, g_lr_cand{0};
 std::atomic<uint64_t> g_long_commits{0}, g_long_aborts{0}, g_long_reads{0};
 uint64_t g_t0_tsc = 0;
 inline double now_us() { return (double)(rdtscp() - g_t0_tsc) / (double)FLAGS_clocks_per_us; }
@@ -337,7 +329,7 @@ void short_worker(size_t thid, size_t nreg, char& ready, const bool& start, cons
     }
     if (!run_tx(tx, ops)) return;
     const double done = now_us();
-    g_lat[g_phase.load(std::memory_order_relaxed)][bucket(done - arrival)].fetch_add(1, std::memory_order_relaxed);
+    g_lat[bucket(done - arrival)].fetch_add(1, std::memory_order_relaxed);
     const size_t s = (size_t)(done / 1e6);
     if (s < 4096) g_sec[s].fetch_add(1, std::memory_order_relaxed);
   }
@@ -371,13 +363,8 @@ void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
       if (loadAcquire(quit)) return false;
     return true;
   };
-  if (FLAGS_q2_single) {
-    idle_until(thid, 1e6 * (double)FLAGS_tf_lr_delay_s, quit);
-    g_lr_start_us = (uint64_t)now_us();
-    g_phase = 1;
-  }
   while (!loadAcquire(quit)) {
-    const uint32_t s = FLAGS_q2_hub >= 0 ? g_hubs[FLAGS_q2_hub % g_hubs.size()] : g_hubs[rnd.next() % g_hubs.size()];
+    const uint32_t s = g_hubs[rnd.next() % g_hubs.size()];
     const double t0 = now_us();
     uint64_t aborts = 0;
     for (;;) {
@@ -392,7 +379,7 @@ void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
             if (seen[v] == stamp) continue;
             seen[v] = stamp;
             next.push_back(v);
-            if (dist >= kQ2MinPath && (FLAGS_q2_all_countries || g_person_country[v] == country))
+            if (dist >= kQ2MinPath && g_person_country[v] == country)
               cand.push_back(v);
           }
         front.swap(next);
@@ -401,7 +388,6 @@ void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
         const uint64_t m = g_msg[j] - g_persons;
         for (uint64_t t = g_mtag_off[m]; t < g_mtag_off[m + 1]; ++t) src[g_mtag[t]] = stamp;
       }
-      if (FLAGS_q2_single) g_lr_cand = cand.size();
       if (FLAGS_q2_stmt_delay_us && !round_trip()) { tx.abort(); goto DONE; }
       for (uint32_t c : cand) {
         uint64_t count = 0;
@@ -427,14 +413,12 @@ void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
         if (FLAGS_q2_stmt_delay_us && !round_trip()) { tx.abort(); goto DONE; }
         if (loadAcquire(quit)) { tx.abort(); goto DONE; }
       }
-      if (FLAGS_q2_single) g_lr_exec_us = (uint64_t)now_us();
       if (tx.commit()) break;
     ABORT:
       tx.abort();
       if (tx.status_ == TransactionStatus::invalid || loadAcquire(quit)) goto DONE;
       ++tx.result_->local_abort_counts_;
       ++aborts;
-      if (FLAGS_q2_single) g_lr_attempts = aborts + 1;
     }
     storeRelease(tx.result_->local_commit_counts_, loadAcquire(tx.result_->local_commit_counts_) + 1);
     {
@@ -444,7 +428,6 @@ void q2_worker(size_t thid, char& ready, const bool& start, const bool& quit) {
       const size_t sec = (size_t)(done / 1e6);
       if (sec < 4096) g_long_sec[sec].fetch_add(1, std::memory_order_relaxed);
     }
-    if (FLAGS_q2_single) { g_lr_end_us = (uint64_t)now_us(); g_lr_attempts = aborts + 1; g_phase = 2; break; }
   }
 DONE:
   idle_until(thid, 1e18, quit);
@@ -472,9 +455,7 @@ int main(int argc, char* argv[]) try {
   init((uint32_t)Storage::Size);
   printf("#FLAGS_ldbc_read_ratio:\t%lu\n#FLAGS_q2_clients:\t%lu\n#FLAGS_q2_stmt_delay_us:\t%lu\n",
          FLAGS_ldbc_read_ratio, FLAGS_q2_clients, FLAGS_q2_stmt_delay_us);
-  printf("#FLAGS_q2_all_countries:\t%d\n#FLAGS_q2_single:\t%d\n#FLAGS_q2_hub:\t%ld\n", (int)FLAGS_q2_all_countries,
-         (int)FLAGS_q2_single, (long)FLAGS_q2_hub);
-  printf("#FLAGS_tf_rate:\t%lu\n#FLAGS_tf_lr_delay_s:\t%lu\n", FLAGS_tf_rate, FLAGS_tf_lr_delay_s);
+  printf("#FLAGS_tf_rate:\t%lu\n", FLAGS_tf_rate);
   make_db(g_persons + g_messages);
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
@@ -494,31 +475,25 @@ int main(int argc, char* argv[]) try {
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
     // floor: the lowest reclamation floor announced by a live transaction (-1 if none).
-#ifdef ENGINE_SAROS
     const uint64_t floor = ReclamationFloorAnnouncer::min_live();
-#else
-    const uint64_t floor = std::numeric_limits<uint64_t>::max();
-#endif
-    printf("#ldbc_sec\t%zu\tshort=%lu\tlong=%lu\tphase=%d\tge=%lu\tfloor=%ld\n", i,
-           (unsigned long)g_sec[i].load(), (unsigned long)g_long_sec[i].load(), g_phase.load(),
+    printf("#ldbc_sec\t%zu\tshort=%lu\tlong=%lu\tge=%lu\tfloor=%ld\n", i,
+           (unsigned long)g_sec[i].load(), (unsigned long)g_long_sec[i].load(),
            (unsigned long)atomicLoadGE(),
            floor == std::numeric_limits<uint64_t>::max() ? -1L : (long)floor);
     fflush(stdout);
   }
   storeRelease(quit, true);
   for (auto& th : thv) th.join();
-  const char* names[3] = {"before", "during", "after"};
-  for (int ph = 0; ph < 3; ++ph) {
+  {
     uint64_t n = 0;
-    for (int b = 0; b < kBuckets; ++b) n += g_lat[ph][b].load();
-    printf("#ldbc_short_latency\t%s\tcommits=%lu\tp50_ms=%.3f\tp99_ms=%.3f\tp999_ms=%.3f\tmax_bucket_ms=%.1f\n",
-           names[ph], (unsigned long)n, pct(g_lat[ph], 0.5), pct(g_lat[ph], 0.99), pct(g_lat[ph], 0.999), pct(g_lat[ph], 1.0));
+    for (int b = 0; b < kBuckets; ++b) n += g_lat[b].load();
+    printf("#ldbc_short_latency\tcommits=%lu\tp50_ms=%.3f\tp99_ms=%.3f\tp999_ms=%.3f\tmax_bucket_ms=%.1f\n",
+           (unsigned long)n, pct(g_lat, 0.5), pct(g_lat, 0.99), pct(g_lat, 0.999), pct(g_lat, 1.0));
   }
   // Latency histograms, as (bucket midpoint in ms, count).
-  for (int ph = 0; ph < 3; ++ph)
-    for (int b = 0; b < kBuckets; ++b)
-      if (uint64_t c = g_lat[ph][b].load())
-        printf("#ldbc_short_hist\t%s\t%.6g\t%lu\n", names[ph], std::pow(10.0, (b + 0.5) / 40.0) / 1000.0, (unsigned long)c);
+  for (int b = 0; b < kBuckets; ++b)
+    if (uint64_t c = g_lat[b].load())
+      printf("#ldbc_short_hist\t%.6g\t%lu\n", std::pow(10.0, (b + 0.5) / 40.0) / 1000.0, (unsigned long)c);
   for (int b = 0; b < kBuckets; ++b)
     if (uint64_t c = g_long_lat[b].load())
       printf("#ldbc_long_hist\t%.6g\t%lu\n", std::pow(10.0, (b + 0.5) / 40.0) / 1000.0, (unsigned long)c);
@@ -527,12 +502,6 @@ int main(int argc, char* argv[]) try {
          (unsigned long)g_long_aborts.load(),
          g_long_commits.load() ? (double)g_long_reads.load() / g_long_commits.load() : 0.0,
          pct(g_long_lat, 0.5), pct(g_long_lat, 0.99));
-  if (FLAGS_q2_single)
-    printf("#ldbc_q2_single\tstart_s=%.3f\texec_done_s=%.3f\tend_s=%.3f\tduration_s=%.3f\tattempts=%lu\tcommitted=%d"
-           "\tcandidates=%lu\n", g_lr_start_us / 1e6, g_lr_exec_us / 1e6, g_lr_end_us / 1e6,
-           g_lr_end_us ? (g_lr_end_us - g_lr_start_us) / 1e6 : NAN, (unsigned long)g_lr_attempts.load(),
-           g_lr_end_us != 0, (unsigned long)g_lr_cand.load());
-#ifdef ENGINE_SAROS
   if (FLAGS_free_retired_history_chunks) {
     auto& c = ChunkRetirementRegistry::counters();
     printf("#ldbc_chunk_free\tchunks_unlinked=%lu\tchunks_freed=%lu\treclaim_passes=%lu\tpending_bytes=%lu"
@@ -540,7 +509,6 @@ int main(int argc, char* argv[]) try {
            (unsigned long)c.reclaim_passes.load(), (unsigned long)c.pending_bytes.load(),
            (unsigned long)c.peak_pending_bytes.load());
   }
-#endif
   for (unsigned int i = 0; i < T; ++i) OzeResult[0].addLocalAllResult(OzeResult[i]);
   OzeResult[0].displayAllResult(FLAGS_clocks_per_us, FLAGS_extime, T);
   return 0;

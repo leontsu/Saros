@@ -49,8 +49,8 @@ DEFINE_uint64(retirement_threshold, 128,
               "Saros: retire history entries at a record once its history holds more "
               "than this many entries (0 disables retirement).");
 DEFINE_bool(validate_insert_only_reads, true,
-            "Validate the reads of insert-only transactions. false = Oze's shortcut, "
-            "which skips their read validation.");
+            "Validate the reads of insert-only transactions. false: skip their read "
+            "validation.");
 DEFINE_bool(insert_only_single_writer, true,
             "Single-writer insert-only rule: an insert-only transaction skips read "
             "validation if all versions it read have one writer and no scan covers its "

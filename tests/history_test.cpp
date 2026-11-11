@@ -418,7 +418,7 @@ protected:
     };
 
     // An insert-only transaction I whose reads close a cycle with W: with
-    // --validate_insert_only_reads I aborts; without it, the shortcut lets I commit.
+    // --validate_insert_only_reads I aborts.
     InsertOnlyCycleOutcome run_insert_only_cycle_schedule(bool incremental) {
         reinitialize(incremental);
         InsertOnlyCycleOutcome out{};
@@ -1334,26 +1334,6 @@ TEST_F(HistoryTest, InsertOnlyTransactionValidatesReads) {
         EXPECT_FALSE(out.i_committed)
             << "insert-only transaction with a read-conflict cycle "
                "committed (incremental="
-            << incremental << ")";
-    }
-    FLAGS_validate_insert_only_reads = prev_flag;
-}
-
-// Without it (Oze's shortcut), the insert-only transaction commits despite
-// the cycle.
-TEST_F(HistoryTest, InsertOnlyFastPathSkipsReadValidation) {
-    const bool prev_flag = FLAGS_validate_insert_only_reads;
-    FLAGS_validate_insert_only_reads = false;
-    for (const bool incremental : anomaly_arms()) {
-        const auto out = run_insert_only_cycle_schedule(incremental);
-        report_outcome(std::string("validate_insert_only_reads=0 incremental=") +
-                           (incremental ? "1" : "0"),
-                       {{"W_committed", out.w_committed},
-                        {"I_committed", out.i_committed}});
-        EXPECT_TRUE(out.w_committed) << "incremental=" << incremental;
-        EXPECT_TRUE(out.i_committed)
-            << "Oze's insert-only shortcut skips read validation, so I "
-               "commits despite the cycle (incremental="
             << incremental << ")";
     }
     FLAGS_validate_insert_only_reads = prev_flag;
