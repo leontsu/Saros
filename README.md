@@ -4,8 +4,17 @@ Code for the ICDE 2027 submission *Saros: Reducing Dependency Duplication in
 Decentralized Serialization-Graph Validation*. Saros stores each dependency fact
 once, in an append-only history at the record where it is created, and lets
 other records refer to fixed prefixes of these histories. It extends Oze's
-implementation on CCBench. `saros/` is the Saros engine, `oze/` the Oze
-baseline as a standalone engine, and `workloads/` BoMB and LDBC Q2.
+implementation on CCBench.
+
+| Path | Contents |
+|---|---|
+| `saros/` | The Saros engine. Start at `TxExecutor::validation()` in `transaction.cc` and `RecordGraphState` (a record's history) in `include/oze.hh` |
+| `oze/` | The Oze baseline as a standalone engine |
+| `workloads/` | BoMB (`bomb.hh`, `bomb.cc`) and LDBC Q2 (`ldbc.cc`) |
+| `common/` | Code shared with CCBench |
+| `scripts/` | Build script and one run script per result |
+| `tests/`, `tools/` | Unit and schedule tests; the offline history checker |
+| `docs/` | Every command line (`CONFIGURATIONS.md`); tests and checks (`CORRECTNESS.md`) |
 
 ## Build
 
