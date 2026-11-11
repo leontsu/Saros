@@ -239,6 +239,6 @@ and the flag were removed. The output lines `insert_only_mixed_fulls`,
 
 | Paper item | Source |
 |---|---|
-| D2PL, SSN, Silo, TicToc, MOCC and Cicada in Fig. 6 and Sec. V-D, V-E | other CCBench protocols in Oze's public code (github.com/jnmt/ccbench, branch fix-vldb-paper) |
+| D2PL, SSN, Silo, TicToc, MOCC and Cicada in Fig. 6 and Sec. V-D, V-E | other CCBench protocols in Oze's public code (github.com/jnmt/ccbench, branch vldb-paper) |
 | TuskFlow in Fig. 7, Sec. V-F | TuskFlow's code |
 | Sec. II-C duplication census | a diagnostic build |

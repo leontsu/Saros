@@ -11,8 +11,7 @@ correctness tools were added to it; the protocols and workloads not used by
 the paper were removed.
 
 The single-writer insert-only rule (commit cf0f2b7) and the obsolete-row
-version of BoMB (commit e7ac810) come from branch fix-vldb-paper of
-https://github.com/jnmt/ccbench.
+version of BoMB (commit e7ac810) also come from Oze's public implementation.
 
 The pseudo-random generator in common/random.hh is based on xoroshiro128+
 by David Blackman and Sebastiano Vigna.

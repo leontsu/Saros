@@ -42,7 +42,7 @@ Python 3. Set `CLOCKS_PER_US` to the machine's TSC frequency in MHz.
 describes the tests and the history checks (`scripts/run_history_check.sh`).
 
 Not included: the other protocols of Fig. 6 (Oze's public code,
-github.com/jnmt/ccbench, branch fix-vldb-paper), TuskFlow, the duplication
+github.com/jnmt/ccbench, branch vldb-paper), TuskFlow, the duplication
 census of Sec. II-C, and plotting scripts. Binaries built here validate faster
 than the measured ones, Oze by about 25% (`docs/CORRECTNESS.md`).
 

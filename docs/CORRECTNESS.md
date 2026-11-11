@@ -34,8 +34,8 @@ at read time on Saros. Readers that saw several writers abort. If a concurrent
 scan covers its inserts, it validates its reads in full. The counters
 `insert_only_skips`, `insert_only_mixed_aborts` and `insert_only_scan_falls`
 appear in the output of the BoMB binaries. Both engines run the same rule at
-the same place in `validation()`. The rule comes from branch fix-vldb-paper of
-github.com/jnmt/ccbench (see `NOTICE`), and `--insert_only_single_writer=false`
+the same place in `validation()`. The rule comes from Oze's public code
+(commit cf0f2b7, see `NOTICE`), and `--insert_only_single_writer=false`
 turns it off.
 
 The rule does not depend on the number of L1 threads, but every run here has one
