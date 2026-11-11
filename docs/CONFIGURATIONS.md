@@ -21,7 +21,7 @@ commits db99ef0c (Saros) and 7ba2be5b (Oze); the Fig. 5 binaries add
 
 `bomb_saros` and `ldbc_saros` run Saros by default; `--saros=false` selects
 Oze's merge-based record graphs in the same binary. The paper uses that path
-for its Oze LDBC numbers and for the designated schedules, not for BoMB.
+for its Oze LDBC numbers, not for BoMB.
 
 ## Flags
 
@@ -30,7 +30,7 @@ for its Oze LDBC numbers and for the designated schedules, not for BoMB.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--insert_only_single_writer` | true | the single-writer insert-only rule; false: insert-only transactions validate their reads |
-| `--insert_only_discovery_limit` | 1000 | abort an insert-only transaction with more propagation targets (0: no limit) |
+| `--insert_only_discovery_limit` | 1000 | abort an insert-only transaction with more targets, records left to visit (0: no limit) |
 | `--read_set_hash_index` | true | read-set lookups through a hash index |
 | `--epoch_time` | 40 | epoch length in milliseconds |
 | `--clocks_per_us` | 2100 | TSC frequency in MHz (the paper's machine: 1800) |
@@ -59,7 +59,7 @@ for its Oze LDBC numbers and for the designated schedules, not for BoMB.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--validation_th_num` | 1 | validation threads per transaction (the paper: 1, 4, 8, 32) |
-| `--validation_threshold` | 100 | parallel validation runs only with more propagation targets than this |
+| `--validation_threshold` | 100 | parallel validation runs only with more targets than this |
 
 ### BoMB (`workloads/bomb.hh`)
 
@@ -172,7 +172,8 @@ pointer. Validation threads exist only in Oze (`--validation_th_num`).
 ## Archived flags
 
 The archived command lines (in the paper's run scripts) map to these binaries
-as follows; the differential test of `docs/CORRECTNESS.md` applies exactly
+as follows. Archived names use older terms: graph log or graph state for history,
+include for prefix reference, citation for cutoff (`docs/TERMS.md`); the differential test of `docs/CORRECTNESS.md` applies exactly
 this mapping.
 
 Renamed:

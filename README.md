@@ -14,7 +14,7 @@ implementation on CCBench.
 | `common/` | Code shared with CCBench |
 | `scripts/` | Build script and one run script per result |
 | `tests/`, `tools/` | Unit and schedule tests; the offline history checker |
-| `docs/` | Every command line (`CONFIGURATIONS.md`); tests and checks (`CORRECTNESS.md`) |
+| `docs/` | Every command line (`CONFIGURATIONS.md`); tests and checks (`CORRECTNESS.md`); the paper's terms in the code (`TERMS.md`) |
 
 ## Build
 

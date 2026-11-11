@@ -1,7 +1,7 @@
 # Correctness
 
-The paper argues Saros's correctness in its design sections and reports no
-correctness experiments; the checks below are part of this repository.
+The paper argues Saros's serializability in Sec. III-G and reports one randomized
+test there (`scripts/run_census.sh`). The other checks below are part of this repository.
 
 ## Tests
 
@@ -12,8 +12,8 @@ and the rows `a`..`z` of one table (`tests/fixture_saros.hh`, `tests/fixture_oze
 | Binary | Covers |
 |---|---|
 | `history_test` | record histories, prefix references, import, publication, order forwarding, retirement and its floor, deferred freeing of rows and versions, deleted rows, epoch quiescence; both representations |
-| `retirement_test` | retirement bounds of prefix references, epoch membership transitions, the transaction-id limit, the record-state registry under growth |
-| `schedule_test` | the designated anomaly schedules and randomized schedules, each on Oze's record graphs and on Saros (the `--saros=false` path) |
+| `retirement_test` | retirement bounds of prefix references, epoch membership transitions, the transaction-id limit, the record registry under growth |
+| `schedule_test` | the designated anomaly schedules and randomized schedules, each on Oze's record graphs (the `--saros=false` path) and on Saros |
 | `chunk_freeing_test` | freeing of retired history chunks: references into freed prefixes, readers inside unlinked chunks, stale watermarks, fallback walks, byte counts, a concurrent stress test, deleted records |
 | `insert_only_rule_test_saros`, `insert_only_rule_test_oze` | the single-writer insert-only rule on each engine: a single writer skips read validation, mixed writers abort, a concurrent scan falls to full validation, the rule off validates |
 | `bomb_obsolete_test_saros`, `bomb_obsolete_test_oze` | the obsolete-row version of BoMB on each engine, on a small database: without the marking a removed product's row keeps an older writer; with it L1 rewrites the row, all rows of the factory have one writer, and S2 skips the row and passes the rule |
@@ -83,7 +83,7 @@ same transactions, how many commit more under Oze, and how many commit more
 under Saros (4977, 23 and 0). `OZE_RULES_RANDOM_N`,
 `OZE_RULES_RANDOM_SEED`, `OZE_RULES_RANDOM_TX` and `OZE_RULES_RANDOM_KEYS`
 set the schedules; `OZE_RULES_RANDOM_ONLY=legacy|saros` runs one
-representation and `OZE_RULES_RANDOM_DUMP_ROOT=<dir>` dumps each run's
+representation (`legacy`: Oze's record graphs) and `OZE_RULES_RANDOM_DUMP_ROOT=<dir>` dumps each run's
 history for `tools/check_history.py`.
 
 ## Freeing does not change decisions
