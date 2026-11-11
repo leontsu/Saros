@@ -21,3 +21,9 @@ under their own licenses:
   third_party/masstree    Masstree (masstree-beta), MIT-style license
   third_party/mimalloc    mimalloc, MIT License
   third_party/googletest  GoogleTest, BSD 3-Clause License
+  TuskFlow                A C++ port of TuskFlow by Kaito Ueda
+                          (https://github.com/K4it0000/Tuskflow), with the
+                          additions used for the paper's comparison (branch
+                          icde2027-comparison). TuskFlow is by Georgios
+                          Theodorakis et al. (https://github.com/Neo4jResearch/TuskFlow).
+                          Apache License 2.0

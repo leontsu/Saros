@@ -14,6 +14,7 @@ code. The run scripts in `scripts/` use exactly these command lines;
 | `bomb_oze_sw.exe` (Oze tree) | `build/bin/bomb_oze` | every BoMB number with Oze |
 | `ldbc_oze_GS.exe` (Saros tree) | `build/bin/ldbc_saros` | LDBC Q2, Saros and Oze (`--saros=false`) |
 | `bomb_sarosOF.exe`, `bomb_ozeOF.exe` (Saros and Oze trees with own factories) | `bomb_saros`, `bomb_oze` | Fig. 5 |
+| TuskFlow port: the build with `--fix_qsbr_retire_pin` (one-shot) and an earlier build without that flag (interactive) | `build/TuskFlow/tuskflow.exe` from submodule `TuskFlow/` (commit 839d669) | Fig. 7, TuskFlow |
 
 The archived BoMB binaries were built from the authors' development trees at
 commits db99ef0c (Saros) and 7ba2be5b (Oze); the Fig. 5 binaries add
@@ -142,6 +143,12 @@ scripts run the whole ladder (`RATES` and `REPS` select a subset).
 |---|---|---|---|
 | Fig. 7, Sec. V-F, Saros | `run_ldbc.sh saros` | `ldbc_saros SAROS SAROS_OPT CF NORULE --short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | C94 |
 | Fig. 7, Sec. V-F, Oze (what produced the paper's numbers) | `run_ldbc.sh oze` | `ldbc_saros OZE_IN_SAROS NORULE --short_discovery_limit=1000 <the same workload flags>` | C94 |
+| Fig. 7, Sec. V-F, TuskFlow | `run_ldbc.sh tf` | `tuskflow.exe --dataset=ldbc --ldbc_path=<SF3> --hops=1 --use_zipf=false --read_ratio=80 --clients=r/100 --client_tx_per_sec=100 --client_paced --workers=32 --lr_budget=2000000 --epoch_size=2000 --lr_kind=q2 --q2_stmt_delay_us=d --lr_clients=k --lr_repeat --lr_delay_ms=0 --duration_ms=60000 --fix_getnext_race --fix_mode_switch_race`, plus `--fix_qsbr_retire_pin` when d = 0; k, r, d and repetitions as above | C94 |
+
+The TuskFlow port runs one mammoth at a time, as TuskFlow does, and queues the
+others. Commit 839d669 in `TuskFlow/` adds what this comparison uses, including
+Q2 and the `--fix_*` flags. Its message lists the additions, all of which are
+off by default.
 
 LDBC transactions insert nothing, so the single-writer rule and the insert-only
 limit have no effect there; `NORULE` matches the measured binaries, which
@@ -240,5 +247,4 @@ and the flag were removed. The output lines `insert_only_mixed_fulls`,
 | Paper item | Source |
 |---|---|
 | D2PL, SSN, Silo, TicToc, MOCC and Cicada in Fig. 6 and Sec. V-D, V-E | other CCBench protocols in Oze's public code (github.com/jnmt/ccbench, branch vldb-paper) |
-| TuskFlow in Fig. 7, Sec. V-F | TuskFlow's code |
 | Sec. II-C duplication census | a diagnostic build |

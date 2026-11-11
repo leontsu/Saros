@@ -28,3 +28,10 @@ fi
 
 cmake -S "$ROOT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release -DDEPS_DIR="$DEPS"
 cmake --build "$BUILD" -j"$JOBS"
+
+# TuskFlow's C++ port (submodule TuskFlow/, Fig. 7) into <build_dir>/TuskFlow. It needs CMake 3.14+ and
+# fetches mimalloc v2.3.2 at configure time.
+if [ -f "$ROOT/TuskFlow/CMakeLists.txt" ]; then
+  cmake -S "$ROOT/TuskFlow" -B "$BUILD/TuskFlow" -DCMAKE_BUILD_TYPE=Release
+  cmake --build "$BUILD/TuskFlow" -j"$JOBS"
+fi

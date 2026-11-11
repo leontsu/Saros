@@ -7,3 +7,7 @@
 [submodule "third_party/googletest"]
 	path = third_party/googletest
 	url = https://github.com/google/googletest.git
+[submodule "TuskFlow"]
+	path = TuskFlow
+	url = https://github.com/leontsu/Tuskflow.git
+	branch = icde2027-comparison
