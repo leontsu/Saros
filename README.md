@@ -10,7 +10,7 @@ implementation on CCBench.
 |---|---|
 | `saros/` | The Saros engine. Start at `TxExecutor::validation()` in `transaction.cc` and `RecordGraphState` (a record's history) in `include/oze.hh` |
 | `oze/` | The Oze baseline as a standalone engine |
-| `TuskFlow/` | Submodule: Kaito Ueda's C++ port of TuskFlow, at the commit used for Fig. 7 |
+| `TuskFlow/` | Submodule: the C++ port of TuskFlow used in Fig. 7 |
 | `workloads/` | BoMB (`bomb.hh`, `bomb.cc`) and LDBC Q2 (`ldbc.cc`) |
 | `common/` | Code shared with CCBench |
 | `scripts/` | Build script and one run script per result |
