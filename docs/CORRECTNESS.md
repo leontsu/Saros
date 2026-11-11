@@ -109,9 +109,12 @@ version below and a global install order) to `<dir>/history_<thread>.log`.
 `tools/check_history.py <dir>` rebuilds each key's version order, builds the
 direct serialization graph (wr, ww and rw edges) and reports every cycle;
 it exits with 0 if there is none. `scripts/run_history_check.sh` does this
-for 60-second Saros BoMB runs at 64 and 1,024 requests per second, with the
-single-writer rule on. The Oze engine has no history dump, so Oze with the rule
-has not been checked this way.
+for 60-second Saros BoMB runs, with the single-writer rule on: on the static BoM
+at 64 and 1,024 requests per second, and on the dynamic obsolete-row BoM at
+1,024. The measured Saros binary of Fig. 6c/d passes the same check on the
+dynamic BoM (16 short-transaction threads, 1,024 requests per second, 60 s:
+58,680 transactions, 0 cycles). The Oze engine has no history dump, so Oze with
+the rule has not been checked this way.
 
 ## Equivalence with the measured build
 
@@ -133,7 +136,10 @@ changed. The larger difference is Oze's L1 validation at 100 products: 9.7 s mea
 and 7.1 s cleaned, for the same dependency facts and the same decisions, which makes
 Oze here about 25% faster than in the paper. GCC inlines the tree helpers once the
 translation unit is smaller; the measured source compiled with
-`--param inline-unit-growth=100` validates in 7.7 s.
+`--param inline-unit-growth=100` validates in 7.7 s. Saros validates about 9%
+faster here (11.7 ms against 12.9 ms). On the dynamic BoM, the cleaned Oze
+committed one L1 within 60 s at 8 threads and 1 request per second, where the
+measured binary committed none.
 
 ## Known inherited issues
 
