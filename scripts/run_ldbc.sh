@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fig. 8, Sec. V-G, V-H: TuskFlow's LDBC Q2 on SF3. Usage: run_ldbc.sh many|single [arm...]; LDBC_PATH: raw CSV directory.
+# Fig. 7, Sec. V-F: TuskFlow's LDBC Q2 on SF3. Usage: run_ldbc.sh many|single [arm...] (single is not in the paper); LDBC_PATH: raw CSV directory.
 # Arms: saros, oze (the paper's numbers: ldbc_saros --saros=false), oze_standalone (ldbc_oze; never measured for the paper).
 source "$(dirname "$0")/common.sh"
 CPUS=${CPUS:-$(seq -s, 0 2 94)}

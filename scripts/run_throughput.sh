@@ -8,10 +8,7 @@ mode=${1:?static or dynamic}; arm=${2:?arm}; shift 2
 CPUS78=$(seq -s, 0 2 78); CPUS94=$(seq -s, 0 2 94)
 case $arm in
   saros)             F="$BOMB_SAROS $SAROS $SAROS_OPT $RULE $CF $OBS"; C=${CPUS:-$CPUS78} ;;
-  saros_rule_off)    F="$BOMB_SAROS $SAROS $SAROS_OPT $NORULE $CF"; C=${CPUS:-$CPUS78} ;;
-  saros_no_obsolete) F="$BOMB_SAROS $SAROS $SAROS_OPT $RULE $CF"; C=${CPUS:-$CPUS78} ;;
   oze)               F="$BOMB_OZE $OZE $RULE $OBS"; C=${CPUS:-$CPUS78} ;;
-  oze_rule_off)      F="$BOMB_OZE $OZE $NORULE"; C=${CPUS:-$CPUS78} ;;
   oze32)             F="$BOMB_OZE $OZE $RULE $OBS --validation_th_num=32"; C=${CPUS:-$CPUS94} ;;
   *) echo "unknown arm $arm" >&2; exit 1 ;;
 esac

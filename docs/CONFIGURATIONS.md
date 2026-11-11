@@ -13,6 +13,7 @@ code. The run scripts in `scripts/` use exactly these command lines;
 | `bomb_oze_SW.exe` (Saros tree) | `build/bin/bomb_saros` | every BoMB number with Saros |
 | `bomb_oze_sw.exe` (Oze tree) | `build/bin/bomb_oze` | every BoMB number with Oze |
 | `ldbc_oze_GS.exe` (Saros tree) | `build/bin/ldbc_saros` | LDBC Q2, Saros and Oze (`--saros=false`) |
+| `bomb_sarosOF.exe`, `bomb_ozeOF.exe` (Saros and Oze trees with own factories) | `bomb_saros`, `bomb_oze` | Fig. 5 |
 | none | `build/bin/ldbc_oze` | LDBC Q2 on the standalone Oze engine; never measured (see below) |
 
 `bomb_saros` and `ldbc_saros` run Saros by default; `--saros=false` selects
@@ -31,6 +32,7 @@ for its Oze LDBC numbers and for the designated schedules, not for BoMB.
 | `--epoch_time` | 40 | epoch length in milliseconds |
 | `--clocks_per_us` | 2100 | TSC frequency in MHz (the paper's machine: 1800) |
 | `--thread_num`, `--extime` | 10, 3 | worker threads; measured seconds |
+| `--leader_thid` | 1 | worker thread that advances the epoch; BoMB runs with k L1 threads set it to k |
 | `--l1_cost_diag` | false | one `#l1cost` line per L1 commit on stderr (Fig. 1b, Table I) |
 
 ### Protocol: Saros engine only
@@ -60,6 +62,7 @@ for its Oze LDBC numbers and for the designated schedules, not for BoMB.
 
 `--bomb_use_cache` (static BoM: L1 walks a BoM cached at start-up),
 `--bomb_mark_obsolete` (the obsolete-row version of BoMB),
+`--bomb_l1_thread_num` and `--bomb_l1_own_factories` (k concurrent L1s, L1 i on factories i+1, i+1+k, ...),
 `--bomb_perc_s1` ... `--bomb_perc_s4` (request mix; S5 gets the rest),
 `--bomb_base_product_size_per_factory` (products per factory, i.e. per L1),
 `--bomb_mixed_short_rate` with `--bomb_mixed_short_rate_tps` and
@@ -117,19 +120,14 @@ CPUs: `C78` = 0, 2, ..., 78; `C94` = 0, 2, ..., 94; `C30` = 0, 2, ..., 30.
 |---|---|---|---|
 | Fig. 1b, Sec. V-C, Saros | `run_l1cost.sh` | `bomb_saros SAROS SAROS_OPT RULE CF STATIC --bomb_base_product_size_per_factory=p RATE(64) --thread_num=9 --extime=90 --l1_cost_diag=true --eval_sample_path=...`, p = 50, 100, 150, 200 | C94 |
 | Table I, Fig. 1b, Sec. V-C, Oze | `run_l1cost.sh` | `bomb_oze OZE RULE --validation_th_num=v STATIC --bomb_base_product_size_per_factory=p RATE(64) --thread_num=9 --extime=90 --l1_cost_diag=true --eval_sample_path=...`, v = 1, 4, 8, 32, same p | C94 |
-| Fig. 1a, Fig. 5, Sec. V-B, Saros | `run_memory.sh` | `bomb_saros SAROS SAROS_OPT RULE CF STATIC RATE(x) --thread_num=8 --extime=600 --retention_sample_path=... --retention_sample_interval_s=10 --eval_sample_path=...` (freeing on) and the same with `NOCF` (off, dashed), x = 1024, p15, 64, 3 repetitions; RSS once per second (`scripts/rss_sampler.py`) | C30 |
-| Fig. 1a, Fig. 5, Sec. V-B, Oze | `run_memory.sh` | `bomb_oze OZE RULE STATIC RATE(x) --thread_num=8 --extime=600 --eval_sample_path=...`, same x, 3 repetitions; RSS as above | C30 |
+| Fig. 1a, Fig. 4, Sec. V-B, Saros | `run_memory.sh` | `bomb_saros SAROS SAROS_OPT RULE CF STATIC RATE(x) --thread_num=8 --extime=600 --retention_sample_path=... --retention_sample_interval_s=10 --eval_sample_path=...` (freeing on) and the same with `NOCF` (off, dashed), x = 1024, p15, 64, 3 repetitions; RSS once per second (`scripts/rss_sampler.py`) | C30 |
+| Fig. 1a, Fig. 4, Sec. V-B, Oze | `run_memory.sh` | `bomb_oze OZE RULE STATIC RATE(x) --thread_num=8 --extime=600 --eval_sample_path=...`, same x, 3 repetitions; RSS as above | C30 |
+| Fig. 5, Sec. V-B | `run_multil1.sh` | `bomb_saros SAROS SAROS_OPT RULE CF` or `bomb_oze OZE RULE`, then `STATIC RATE(1024) --bomb_factory_size=64 --bomb_l1_own_factories=true --bomb_l1_thread_num=k --leader_thid=k --thread_num=33 --extime=60 --eval_sample_path=...`, k = 1, 2, 4, 8, 3 repetitions; RSS once per second | C78 |
 | Fig. 6a/b, Saros | `run_throughput.sh static saros` | `bomb_saros SAROS SAROS_OPT RULE CF STATIC RATE(r) --thread_num=N+1 --extime=60 --eval_sample_path=...`, N = 1, 2, 4, 8, 16, 24, 32, r on the ladder | C78 |
 | Fig. 6a/b, Oze | `run_throughput.sh static oze` | `bomb_oze OZE RULE STATIC RATE(r) --thread_num=N+1 --extime=60 --eval_sample_path=...` | C78 |
 | Fig. 6a/b, Oze with 32 validation threads | `run_throughput.sh static oze32` | the same with `--validation_th_num=32` | C94 |
-| Sec. V-D, rule off, Saros | `run_throughput.sh static saros_rule_off` | `bomb_saros SAROS SAROS_OPT NORULE CF STATIC RATE(r) --thread_num=N+1 --extime=60 ...` | C78 |
-| Sec. V-D, rule off, Oze | `run_throughput.sh static oze_rule_off` | `bomb_oze OZE NORULE STATIC RATE(r) --thread_num=N+1 --extime=60 ...`; the paper's numbers come from an earlier build of this baseline without the rule and without the guard's epoch of slack | C78 |
 | Fig. 6c/d, Sec. V-E, Saros | `run_throughput.sh dynamic saros` | `bomb_saros SAROS SAROS_OPT RULE CF DYNAMIC OBSOLETE RATE(r) --thread_num=N+1 --extime=60 --eval_sample_path=...` | C78 |
 | Fig. 6c/d, Sec. V-E, Oze | `run_throughput.sh dynamic oze`, `oze32` | `bomb_oze OZE RULE DYNAMIC OBSOLETE RATE(r) --thread_num=N+1 --extime=60 ...` (`oze32`: with `--validation_th_num=32`) | C78; `oze32`: C94 |
-| Sec. V-E, Oze at 200 GiB | `MEM=200G NODE=0,1 RATES="1 2 ... 8192" run_throughput.sh dynamic oze32 8 32` | as above, memory on both sockets | C94 |
-| Sec. V-A, dynamic BoM without marking | `run_throughput.sh dynamic saros_no_obsolete` | `bomb_saros SAROS SAROS_OPT RULE CF DYNAMIC RATE(r) --thread_num=N+1 --extime=60 ...` | C78 |
-| Fig. 7, Sec. V-F, Oze bars | `run_ablation.sh` | `bomb_oze OZE RULE STATIC RATE(r) --thread_num=ns+1 --extime=60 ...`, without (`--read_set_hash_index=false`) and with the index, r = 1024, 8192, ns = 8, 32, 3 repetitions | C78 |
-| Fig. 7, Sec. V-F, Saros bars | `run_ablation.sh` | `bomb_saros SAROS RULE <stage> STATIC RATE(r) --thread_num=ns+1 --extime=60 ...`, same r, ns, repetitions; S1: index, skip and reuse false, `NOCF`; S2: + index; S3: + skip; S4: + reuse; S5: + `CF` | C78 |
 
 The paper's Fig. 6 campaigns walked the rate ladder per thread count and
 stopped once the short-transaction throughput changed by less than 5 % or after
@@ -140,9 +138,8 @@ scripts run the whole ladder (`RATES` and `REPS` select a subset).
 
 | Paper item | Script | Command line | CPUs |
 |---|---|---|---|
-| Fig. 8, Sec. V-G, Saros | `run_ldbc.sh many saros` | `ldbc_saros SAROS SAROS_OPT CF NORULE --short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | C94 |
-| Fig. 8, Sec. V-G, Oze (what produced the paper's numbers) | `run_ldbc.sh many oze` | `ldbc_saros OZE_IN_SAROS NORULE --short_discovery_limit=1000 <the same workload flags>` | C94 |
-| Sec. V-H, single Q2 | `run_ldbc.sh single saros`, `oze` | as above with `--q2_clients=1 --q2_stmt_delay_us=0 --tf_rate=10000 --extime=130 --tf_lr_delay_s=60 --q2_single --q2_all_countries --q2_hub=h`, h = 0, 1, 2 | C94 |
+| Fig. 7, Sec. V-F, Saros | `run_ldbc.sh many saros` | `ldbc_saros SAROS SAROS_OPT CF NORULE --short_discovery_limit=1000 --ldbc_path=<SF3> --thread_num=32 --ldbc_read_ratio=80 --q2_clients=k --q2_stmt_delay_us=d --tf_rate=r --extime=60`, k = 1, 2, 4, 8, 16, r = 1000, 10000, d = 500, 0, 3 repetitions, stack limit 1 GiB | C94 |
+| Fig. 7, Sec. V-F, Oze (what produced the paper's numbers) | `run_ldbc.sh many oze` | `ldbc_saros OZE_IN_SAROS NORULE --short_discovery_limit=1000 <the same workload flags>` | C94 |
 | none | `run_ldbc.sh many oze_standalone` | `ldbc_oze OZE NORULE <the same workload flags>` | C94 |
 
 LDBC transactions insert nothing, so the single-writer rule and the insert-only
@@ -272,7 +269,6 @@ and the flag were removed. The output lines `insert_only_mixed_fulls`,
 
 | Paper item | Source |
 |---|---|
-| D2PL, SSN, Silo, TicToc, MOCC and Cicada in Fig. 6 and Sec. V-D, V-E | other CCBench protocols |
-| TuskFlow in Sec. V-G, V-H | TuskFlow's code |
+| D2PL, SSN, Silo, TicToc, MOCC and Cicada in Fig. 6 and Sec. V-D, V-E | other CCBench protocols in Oze's public code (github.com/jnmt/ccbench, branch fix-vldb-paper) |
+| TuskFlow in Fig. 7, Sec. V-F | TuskFlow's code |
 | Sec. II-C duplication census | a diagnostic build |
-| Sec. V-D, Oze with the rule off | an earlier build of this baseline (see above) |

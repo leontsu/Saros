@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fig. 1a, Fig. 5, Sec. V-B: memory over 600 s at 0.25, 64 and 1,024 short requests per second, 3 repetitions.
+# Fig. 1a, Fig. 4, Sec. V-B: memory over 600 s at 0.25, 64 and 1,024 short requests per second, 3 repetitions.
 # Arms: Saros with freeing on (solid) and off (dashed), Oze. Usage: run_memory.sh [arm...]
 source "$(dirname "$0")/common.sh"
 CPUS=${CPUS:-$(seq -s, 0 2 30)}
