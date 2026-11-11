@@ -62,17 +62,15 @@ guard with writers one and two epochs older, on both representations.
 
 ## Designated schedules
 
-`ScheduleTest.DesignatedSchedules` runs five schedules (a blind-write
-discovery cycle, a read-crown cycle, an insert-only cycle, a propagation-mark
-case and the read-only anomaly) on both representations, with
-`--validate_insert_only_reads` false (Oze's shortcut) and true (Saros as
-evaluated), and prints every commit vector. Saros decides every schedule as
-Oze's record graphs do. Validating the reads of insert-only transactions
-rejects the insert-only cycle; under Oze's rules both representations commit
-every transaction of the other schedules, including those of the
-non-serializable blind-write, read-crown and read-only-anomaly schedules. The
-read-set reachability schedules of `ScheduleTest` check that Saros rejects
-each of them whenever Oze does.
+`ScheduleTest.DesignatedSchedules` runs five hand-built schedules (a
+blind-write discovery cycle, a read-crown cycle, an insert-only cycle, a
+propagation-mark case and the read-only anomaly) on both representations, with
+`--validate_insert_only_reads` false and true, and prints every commit vector.
+It compares the two representations: Saros decides every schedule as Oze's
+record graphs do. With `--validate_insert_only_reads=true`, the setting of
+every run in the paper, both reject the insert-only cycle. The read-set
+reachability schedules of `ScheduleTest` check that Saros rejects each of them
+whenever Oze does.
 
 ## Randomized census
 
@@ -141,25 +139,28 @@ faster here (11.7 ms against 12.9 ms). On the dynamic BoM, the cleaned Oze
 committed one L1 within 60 s at 8 threads and 1 request per second, where the
 measured binary committed none.
 
-## Known inherited issues
+## Notes on the measured code
 
-These are in the measured code and kept unchanged:
+This repository keeps the measured code's behavior unchanged, so that its
+results correspond to the paper's. Some details of that code are worth knowing
+when extending it:
 
-- A scan's entry in the scan history (`ScanEntry`) keeps `std::string_view`s
-  of the scan bounds, which point into buffers of the caller (the BoMB
-  transactions' keys on the stack). When a later insert is checked against
-  the scan (`insert_validation()`), the bounds may already hold other data,
-  so the scanner -> inserter edge can be missed or added wrongly. This
-  affects inserts into scanned ranges, i.e. S3 and S4 on a dynamic BoM.
-- `TxExecutor::addScanEntry()` combines the scan range into a local variable
-  that is not initialized (`uint64_t updated;`), so the range recorded for
-  the insert fast path depends on stack contents. It also reads the first
-  four bytes of each scan bound as an integer.
-- `TxExecutor::delete_record()` erases matching entries from `write_set_`
-  while iterating over it and does not free the erased version. The
-  evaluated workloads never delete a key the transaction already wrote.
+- A scan's entry in the scan history (`ScanEntry`) stores its bounds as
+  `std::string_view`s into the caller's key buffers. The check of a later
+  insert against the scan (`insert_validation()`) reads these bounds, so it
+  relies on the buffers still holding the scan's keys. This concerns inserts
+  into scanned ranges, i.e. S3 and S4 on a dynamic BoM, where the history
+  check above finds no cycle.
+- `TxExecutor::addScanEntry()` computes the range it records for the insert
+  fast path from a local variable that starts uninitialized
+  (`uint64_t updated;`), and it reads the first four bytes of each scan bound
+  as an integer.
+- `TxExecutor::delete_record()` removes matching entries from `write_set_`
+  while iterating over it and does not free the removed version. The
+  evaluated workloads never delete a key that the transaction has already
+  written.
 - BoMB's S4 (`Node::collect_leafs()`) also collects the inner nodes below a
-  work-in-progress item, so S4 may delete an inner BoM edge instead of a
+  work-in-progress item, so S4 can delete an inner BoM edge as well as a
   material.
 - Oze's `TxExecutor::validation_worker()` advances its iterators to
   `assignment * worker` in the target set; with few targets per worker
