@@ -49,6 +49,10 @@ DEFINE_uint32(bomb_mc_update_size, 1, "Materials one S1 updates.");
 DEFINE_bool(bomb_mark_obsolete, false,
             "Obsolete-row BoMB: L1 rewrites the ProductCostMaster rows of products no "
             "longer in ItemManufacturingMaster as obsolete, and S2 skips such rows.");
+DEFINE_uint32(bomb_l1_thread_num, 1, "Threads that run L1 back to back (threads 0 to k-1).");
+DEFINE_bool(bomb_l1_own_factories, false,
+            "L1 thread i costs only factories i+1, i+1+k, i+1+2k, ... (k = --bomb_l1_thread_num), "
+            "so two L1s never cost the same factory.");
 #else
 DECLARE_uint32(bomb_mixed_short_rate);
 DECLARE_bool(bomb_mixed_short_rate_tps);
@@ -68,12 +72,15 @@ DECLARE_uint32(bomb_material_per_wip);
 DECLARE_uint32(bomb_base_product_size_per_factory);
 DECLARE_uint32(bomb_mc_update_size);
 DECLARE_bool(bomb_mark_obsolete);
+DECLARE_uint32(bomb_l1_thread_num);
+DECLARE_bool(bomb_l1_own_factories);
 #endif
 
 typedef std::chrono::high_resolution_clock::time_point timepoint;
 
-// Thread 0 runs L1 back to back; every other worker serves one request queue.
-constexpr uint32_t kL1ThreadNum = 1;
+// Threads 0 to k-1 run L1 back to back (k = --bomb_l1_thread_num); every other worker serves one
+// request queue.
+inline uint32_t l1_thread_num() { return FLAGS_bomb_l1_thread_num; }
 
 GLOBAL std::atomic<uint32_t> ItemIdCounter;
 GLOBAL ConcurrentQueue<std::pair<TxType, timepoint>> *requestQueues;
@@ -278,6 +285,12 @@ public:
         switch (type) {
           case TxType::IssueJournalVoucher:
           case TxType::UpdateProductCostMaster:
+            if (FLAGS_bomb_l1_own_factories && tx.thid_ < l1_thread_num()) {
+              const uint32_t k = l1_thread_num();
+              const uint32_t last = (FLAGS_bomb_factory_size - 1 - tx.thid_) / k;
+              f_id = 1 + tx.thid_ + k * w->rnd_.random_int(0, last);
+              break;
+            }
             f_id = w->rnd_.random_int(1, FLAGS_bomb_factory_size);
             break;
           case TxType::UpdateMaterialCostMaster:
@@ -327,7 +340,7 @@ public:
       // Pops the worker's next request. A worker that has to wait leaves the
       // epoch (become_quiescent) and rejoins before it runs the request.
       std::pair<TxType,timepoint> getRequest(TxExecutor& tx) {
-        int queueIndex = tx.thid_ - kL1ThreadNum;
+        int queueIndex = tx.thid_ - l1_thread_num();
         std::pair<TxType, timepoint> ret;
 #ifdef ENGINE_SAROS
         bool waited = false;
@@ -354,7 +367,7 @@ public:
 
       timepoint generate(BombWorkload* workload, TxExecutor& tx) {
         timepoint start;
-        if (tx.thid_ < kL1ThreadNum) {
+        if (tx.thid_ < l1_thread_num()) {
           type = TxType::UpdateProductCostMaster;
           start = std::chrono::high_resolution_clock::now();
         } else {
@@ -1103,7 +1116,13 @@ RETRY:
     // Fills the short workers' queues round-robin: one batch of requests per
     // queue, then one request interval of sleep.
     static void request_dispatcher(size_t thid, char &ready, const bool &start, const bool &quit) {
-      int numQueues = TotalThreadNum - kL1ThreadNum;
+      if (l1_thread_num() >= TotalThreadNum ||
+          (FLAGS_bomb_l1_own_factories && FLAGS_bomb_factory_size < l1_thread_num())) {
+        std::cout << "Need more threads than L1 threads, and with --bomb_l1_own_factories at least "
+                     "one factory per L1 thread" << std::endl;
+        ERR;
+      }
+      int numQueues = TotalThreadNum - l1_thread_num();
       requestQueues = new ConcurrentQueue<std::pair<TxType, timepoint>>[numQueues];
 
       uint64_t thresholds[4];

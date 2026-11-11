@@ -1084,7 +1084,7 @@ void TxExecutor::reconnoiter_end() {
 
 // Thread 1 advances the global epoch (the BoMB L1 runs on thread 0).
 bool TxExecutor::isLeader() {
-    return this->thid_ == 1;
+    return this->thid_ == FLAGS_leader_thid;
 }
 
 void TxExecutor::leaderWork() {

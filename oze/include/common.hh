@@ -33,6 +33,9 @@ DEFINE_uint64(clocks_per_us, 2100, "TSC ticks per microsecond (the CPU's TSC MHz
 DEFINE_uint64(extime, 3, "Measured run time in seconds.");
 DEFINE_uint64(epoch_time, 40, "Epoch interval in milliseconds.");
 DEFINE_uint64(thread_num, 10, "Number of worker threads.");
+DEFINE_uint64(leader_thid, 1,
+              "Worker thread that advances the epoch. BoMB runs with k L1 threads set it to k, "
+              "the first short-transaction thread.");
 DEFINE_uint64(validation_th_num, 1, "Validation threads per transaction (1 = serial).");
 DEFINE_uint64(validation_threshold, 100,
               "Parallel validation runs only with more propagation targets than this.");
@@ -52,6 +55,7 @@ DECLARE_uint64(clocks_per_us);
 DECLARE_uint64(extime);
 DECLARE_uint64(epoch_time);
 DECLARE_uint64(thread_num);
+DECLARE_uint64(leader_thid);
 DECLARE_uint64(validation_th_num);
 DECLARE_uint64(validation_threshold);
 DECLARE_bool(insert_only_single_writer);

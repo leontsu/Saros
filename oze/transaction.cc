@@ -807,7 +807,7 @@ void TxExecutor::reconnoiter_end() {
 }
 
 bool TxExecutor::isLeader() {
-    return this->thid_ == 1;
+    return this->thid_ == FLAGS_leader_thid;
 }
 
 void TxExecutor::leaderWork() {
